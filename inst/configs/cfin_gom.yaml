@@ -1,0 +1,119 @@
+# Example real run: Centropages typicus tau-patches from ECOMON stations,
+# with monthly Copernicus physical covariates.
+#
+# Set paths.zoop_file to your local copy of the database written by
+# original/create_database.R. That file is not in this repo and should not be
+# committed: data/ is gitignored.
+paths:
+  project_dir: '.'
+  zoop_file: data/zooplankton_database.csv
+  output_dir: output/cfin_gom
+
+# Column names as written by original/create_database.R.
+columns:
+  lat: lat
+  lon: lon
+  year: year
+  month: month
+  day: day
+  dataset: dataset
+  # ECOMON is what this model runs on essentially all of the time. The other
+  # values present in the database are ECOMON_STAGED, MBON, and CPR.
+  dataset_filter:
+    - ECOMON
+
+species:
+  active: cfin
+  catalog:
+    # `column_prefix` is the prefix of the species' columns in the database and
+    # defaults to the species key, so cfin and ctyp need it only for clarity.
+    # pcal is the one species whose columns are named differently (pseudo_*),
+    # so it aliases the preferred name onto the database prefix.
+    #
+    # `stages` optionally narrows to particular life stages, summed together;
+    # omit it to sum every stage (equivalent to the <prefix>_total column).
+    # Which stages exist differs per species - cfin resolves CI through CVI,
+    # while ctyp and pseudo carry `adult` plus combination columns - so list
+    # them with taupatch::available_stages(zoop_file, "cfin") rather than
+    # assuming a CI-CVI set.
+    #
+    # Note for cfin on ECOMON: ECOMON does not resolve CV from CVI and reports
+    # the combined count, which this offers as the `adult` stage. Leaving
+    # `stages` empty (the default) sums everything and works; selecting single
+    # stages only yields data on ECOMON_STAGED.
+    cfin:
+      column_prefix: cfin
+      # stages: [CV, CVI]   # e.g. late copepodites only
+      threshold:
+        type: percentile
+        value: 0.9
+    ctyp:
+      column_prefix: ctyp
+      threshold:
+        type: percentile
+        value: 0.9
+    pcal:
+      column_prefix: pseudo
+      threshold:
+        type: percentile
+        value: 0.9
+
+# Observations the model is fitted on.
+dates:
+  years: [2003, 2017]
+  months: [1, 12]
+
+# Northeast US shelf, matching the extent the original pipeline cropped its
+# projections to (original/load_covars.R:147).
+study_area:
+  bbox:
+    xmin: -76.0
+    xmax: -65.0
+    ymin: 35.0
+    ymax: 45.0
+
+covariates:
+  source: copernicus
+  # Covariates are named the way people refer to them; each resolves to a
+  # Copernicus product, dataset, and variable via taupatch::copernicus_covariates().
+  # Run taupatch::covariate_info() for the full list with units and long names.
+  # Covariates sharing a dataset are fetched in a single request.
+  selected:
+    - SST      # sea surface temperature (degrees C)
+    - SSS      # sea surface salinity (PSU)
+    - BOTT     # bottom temperature (degrees C)
+    - MLD      # mixed layer depth (m)
+    - CHL      # chlorophyll-a (mg/m3)
+  # Static seafloor covariates, downloaded once from NOAA ETOPO via
+  # marmap::getNOAA.bathy() and attached to every month. These replace the
+  # SRTM30 depth/slope/distance layers the original used.
+  bathymetry:
+    - DEPTH
+    - SLOPE
+  derived:
+    - jday     # day of year; the seasonality term
+  # The original log-transformed both chlorophyll and bathymetry; both span
+  # orders of magnitude across the shelf.
+  log_transform:
+    - CHL
+    - DEPTH
+  # Days fetched in parallel. Modest values only - the bottleneck is the
+  # Copernicus API, not local CPU.
+  n_workers: 4
+
+model:
+  engine: ranger
+  trees: 500
+  cv_folds: 10
+  tune: false
+  seed: 42
+
+projection:
+  # Months to map. Omit years/months to reuse the training window; set them to
+  # project a different period than the model was fitted on. Covariates are
+  # fetched for the union of the two windows.
+  years: [2003, 2017]
+  months: [1, 12]
+  write_geotiff: true
+  write_png: true
+  overwrite: true

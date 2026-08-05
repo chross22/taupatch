@@ -1,0 +1,69 @@
+# Fast smoke-test config: synthetic data, no network, no Copernicus credentials.
+# Exercises every pipeline stage end-to-end in a few seconds.
+paths:
+  project_dir: '.'
+  zoop_file: data/mock_zooplankton.csv
+  output_dir: output/mock_test
+
+columns:
+  lat: lat
+  lon: lon
+  year: year
+  month: month
+  day: day
+  dataset: dataset
+  dataset_filter:
+    - ECOMON
+
+species:
+  active: cfin
+  catalog:
+    # column_prefix defaults to the species key, so cfin and ctyp need nothing.
+    # pcal is the one species whose database columns use a different prefix.
+    cfin:
+      column_prefix: cfin
+      threshold:
+        type: percentile
+        value: 0.9
+    ctyp:
+      column_prefix: ctyp
+      threshold:
+        type: percentile
+        value: 0.9
+    pcal:
+      column_prefix: pseudo
+      threshold:
+        type: percentile
+        value: 0.9
+
+dates:
+  years: [2018, 2019]
+  months: [6, 8]
+
+study_area:
+  bbox:
+    xmin: -70.0
+    xmax: -66.0
+    ymin: 41.0
+    ymax: 44.0
+
+covariates:
+  source: mock
+  selected:
+    - SST
+    - SSS
+  derived:
+    - jday
+  log_transform: []
+
+model:
+  engine: ranger
+  trees: 200
+  cv_folds: 5
+  tune: false
+  seed: 42
+
+projection:
+  write_geotiff: true
+  write_png: true
+  overwrite: true

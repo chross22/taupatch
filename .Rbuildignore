@@ -1,0 +1,11 @@
+^original$
+^docs$
+^taupatch\.Rproj$
+^\.Rproj\.user$
+^\.github$
+^README\.Rmd$
+^data$
+^output$
+^\.DS_Store$
+^LICENSE\.md$
+^\.claude$

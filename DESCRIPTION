@@ -1,0 +1,49 @@
+Package: taupatch
+Title: Spatial Habitat Suitability Models for Zooplankton High-Abundance Patches
+Version: 0.1.0
+Authors@R:
+    person("Camille", "Ross", email = "camille.ross@maine.edu", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-1428-2294"))
+Description: Builds monthly spatial habitat suitability models for high-abundance
+    patches ("tau-patches") of a zooplankton species, where a patch is defined by a
+    species-specific abundance threshold. Zooplankton station data is matched to
+    Copernicus Marine environmental covariates via the datamatch package, classified
+    against the threshold, and modeled with a tidymodels workflow. Fitted models are
+    projected to monthly habitat suitability maps. Species, covariates, thresholds,
+    study area, and model settings are all driven by a YAML config rather than code
+    edits. Rebuilt from the biomod2-based pipeline of Ross et al. (2023).
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1)
+Imports:
+    dplyr,
+    ggplot2,
+    parsnip,
+    recipes,
+    rsample,
+    rlang,
+    readr,
+    sf,
+    terra,
+    tibble,
+    tune,
+    workflows,
+    yaml,
+    yardstick
+Suggests:
+    datamatch,
+    copernicus,
+    leaflet,
+    ranger,
+    marmap,
+    shiny,
+    testthat (>= 3.0.0)
+Remotes:
+    chross22/datamatch,
+    BigelowLab/copernicus
+Config/testthat/edition: 3
+URL: https://github.com/chross22/taupatch
+BugReports: https://github.com/chross22/taupatch/issues
+Config/roxygen2/version: 8.1.0

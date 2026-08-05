@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+
+# Real zooplankton data and model outputs stay local. The survey data has its
+# own sharing terms; outputs are regenerable from a config + a run.
+data/
+output/
+

@@ -1,0 +1,209 @@
+---
+title: "Create zooplankton database"
+author: "Camille"
+date: "6/8/2020"
+output: html_document
+toc: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Purpose
+
+The purpose of this document is to aggregate the individual zooplankton datasets into one comprehensive database.  
+
+## Load libraries
+
+The necessary libraries are loaded.  These include a tidy way to read in CSV files, a package for streamlined data manipulation, and a package for date manipulation.
+
+```{r load_libraries, message=FALSE}
+# -------- Load libraries --------
+library(readr)
+library(dplyr)
+library(lubridate)
+```
+
+## Initialize filepaths
+
+File paths for the data layers are then initialized, based off of the base data filepath.  
+
+```{r init_fps}
+# -------- Initialize filepaths --------
+# Data filepath
+fp_data <- "./calanus_data/Data"
+# ECOMON filepath
+fp_ecomon <- file.path(fp_data, "ECOMON")
+# Runge filepath
+fp_runge <- file.path(fp_data, "Runge")
+# CPR filepath
+fp_cpr <- file.path(fp_data, "CPR")
+# Databases filepath
+fp_db <- file.path(fp_data, "Databases")
+```
+
+## Load ECOMON data
+
+The ECOMON data is then loaded.  The centropage, C. finmarchicus, and pseudocalanus fields are renamed so they match the other datasets.  The date field is converted into year, month, and day.  The time field is converted into hours and minutes.  Empty fields are added for the zooplankton stages that were not included in the ECOMON data, but were included in other datasets.  Then, the relevant fields are selected from the dataset.  
+
+```{r load_ecomon, warning=FALSE, message=FALSE}
+# -------- Load ECOMON data ---------
+# Read in data -- version 3.5
+ecomon_dat <- readr::read_csv(file.path(fp_ecomon, "EcoMon_Plankton_Data_v3_5.csv")) %>%
+  # Rename calanus column for consistency across datasets
+  dplyr::rename(ctyp_adult = ctyp_10m2, # Centropages
+                cfin_CV_CVI = calfin_10m2, # C. finmarchicus
+                pseudo_adult = pseudo_10m2) %>% # Pseudocalanus
+  # Break up date and time into individual units
+  # Add missing columns for consistency across datasets
+  dplyr::mutate(year = lubridate::year(as.Date(date, format = '%d-%b-%y')),
+                month = lubridate::month(as.Date(date, format = '%d-%b-%y')),
+                day = lubridate::day(as.Date(date, format = '%d-%b-%y')),
+                hour = lubridate::hour(lubridate::hms(time)),
+                minute = lubridate::minute(lubridate::hms(time)),
+                cfin_CI = NA,
+                cfin_CII = NA,
+                cfin_CIII = NA,
+                cfin_CV = NA,
+                cfin_CIV = NA,
+                cfin_CVI = NA,
+                cfin_CI_CIV = NA,
+                ctyp_CIII = NA,
+                ctyp_CIV = NA, 
+                ctyp_CV = NA,
+                ctyp_C = NA, 
+                ctyp_CIV_CV = NA, 
+                ctyp_CIV_CVI = NA,
+                ctyp_CVI = NA,
+                ctyp_CV_CVI = NA, 
+                psuedo_CII = NA,
+                pseudo_CV = NA, 
+                pseudo_C = NA, 
+                pseudo_CVI = NA, 
+                pseudo_CI_CIV = NA,
+                dataset = "ECOMON") %>%
+  # Select relevant columns
+  dplyr::select(station, year, month, day, 
+                hour, minute, lat, lon,
+                cfin_CI, cfin_CII, cfin_CIII,
+                cfin_CIV, cfin_CVI, cfin_CV,
+                cfin_CI_CIV, cfin_CV_CVI, ctyp_adult,
+                ctyp_CIII, ctyp_CIV, ctyp_CV,
+                ctyp_C, ctyp_CIV_CV, ctyp_CIV_CVI,
+                ctyp_CVI, ctyp_CV_CVI, pseudo_adult, 
+                psuedo_CII, pseudo_CV, pseudo_C, 
+                pseudo_CVI, pseudo_CI_CIV, dataset)
+  
+```
+
+## Load Runge data
+
+The Runge data is loaded  The year, month, day, latitude, and longitude fields and the fields for the different life stages of C. finmarchicus are selected and renamed so they match the other datasets.  Empty fields are added for the zooplankton species stages that were not included in the Runge data, but were included in other datasets.  
+
+```{r load_runge, warning=FALSE, message=FALSE}
+# -------- Load Runge data --------
+# Read in data
+runge_dat <- readr::read_csv(file.path(fp_runge, "UBER_ZOOBIO_2012_Aug16_2017_edit4GAMM.csv")) %>%
+  # Add empty station, hour, and minute fields
+  dplyr::mutate(station = NA,
+                hour = NA, 
+                minute = NA) %>%
+  # Select relevant columns
+  dplyr::select(station, YEAR, MNTH, DAY, hour, minute, `Lat Decimal`, `Log Decimal`, 
+                `Calanus_finmarchicusCI(M2)`,
+                `Calanus_finmarchicusCII(M2)`,
+                `Calanus_finmarchicusCIII(M2)`,
+                `Calanus_finmarchicusCIV(M2)`,
+                `Calanus_finmarchicusCV(M2)`) %>%
+  # Rename columns to match other datasets
+  dplyr::rename(cfin_CI = `Calanus_finmarchicusCI(M2)`,
+                cfin_CII = `Calanus_finmarchicusCII(M2)`,
+                cfin_CIII = `Calanus_finmarchicusCIII(M2)`,
+                cfin_CIV = `Calanus_finmarchicusCIV(M2)`,
+                cfin_CV = `Calanus_finmarchicusCV(M2)`,
+                year = YEAR,
+                month = MNTH,
+                day = DAY,
+                lat = `Lat Decimal`,
+                lon = `Log Decimal`) %>%
+  # Add missing columns for consistency across datasets
+  dplyr::mutate(cfin_CVI = NA,
+                cfin_CI_CIV = NA,
+                cfin_CV_CVI = NA,
+                ctyp_adult = NA,
+                ctyp_CIII = NA,
+                ctyp_CIV = NA, 
+                ctyp_CV = NA,
+                ctyp_C = NA, 
+                ctyp_CIV_CV = NA, 
+                ctyp_CIV_CVI = NA,
+                ctyp_CVI = NA,
+                ctyp_CV_CVI = NA, 
+                pseudo_adult = NA,
+                psuedo_CII = NA,
+                pseudo_CV = NA, 
+                pseudo_C = NA, 
+                pseudo_CVI = NA, 
+                pseudo_CI_CIV = NA,
+                dataset = "RUNGE")
+```
+
+## Load CPR data
+
+The continuous plankton recorder (CPR) data is loaded.  Because the headers included two rows, the headers are read in first.  The first and second rows are then concatonated for each field so there is one row of headers.  The rest of the data is then read in, and the headers are appended back onto the data.  The relevant fields are selected and then renamed.  Because this dataset has all of the stages of the zooplankton species of interest, we did not have to add empty fields.    
+
+```{r load_cpr, warning=FALSE, message=FALSE}
+# -------- Load CPR data --------
+# Read in headers
+cpr_header <- readr::read_csv(file.path(fp_cpr, "GOMCPR_trim_cop.csv"), n_max = 2, col_names = FALSE)
+# Concatonate fist and second row of headers
+cpr_header <- paste0(cpr_header[1,], cpr_header[2,])
+# Read in data
+cpr_dat <- readr::read_csv(file.path(fp_cpr, "GOMCPR_trim_cop.csv"), skip = 2, col_names = FALSE)
+# Reattach headers to cpr_data
+names(cpr_dat) <- cpr_header
+# Select relevant columns
+cpr_dat <- cpr_dat %>% 
+  dplyr::select(`'Station'NA`, `'Year'NA`, `'Month'NA`,
+                `'Day'NA`, `'Hour'NA`, `'Minute'NA`, 
+                `Latitude (degrees N)'NA`, `Longitude (degrees W)'NA`,
+                contains("Calanus finmarchicus"),
+                contains("Centropages typicus"),
+                contains("'Pseudocalanus'")) %>%
+  dplyr::mutate(dataset = "CPR")
+# Rename all columns
+names(cpr_dat) <- c("station", "year", "month",
+                    "day", "hour", "minute", 
+                    "lat", "lon", "cfin_CI", 
+                    "cfin_CII", "cfin_CIII", 
+                    "cfin_CIV", "cfin_CV", "cfin_CVI", 
+                    "cfin_CI_CIV", "cfin_CV_CVI", "ctyp_adult",
+                    "ctyp_CIII", "ctyp_CIV", "ctyp_CV",
+                    "ctyp_C", "ctyp_CIV_CV", "ctyp_CIV_CVI",
+                    "ctyp_CVI", "ctyp_CV_CVI", "pseudo_adult",
+                    "psuedo_CII", "pseudo_CV", "pseudo_C", 
+                    "pseudo_CVI", "pseudo_CI_CIV", "dataset")
+```
+
+## Create database
+
+To create the comprehensive database, the three datasets are bound together row-wise.  Missing values (i.e. -9999) are set to 0.  Fields for the total numbers of each type of zooplankton are computed using rowSums().  Finally, the database is written to a CSV. 
+
+```{r create_database}
+# -------- Create database --------
+# Combine individual datasets
+database <- rbind(ecomon_dat, runge_dat, cpr_dat) 
+# Replace missing values with 0
+database[database == -9999] <- 0
+# Add column for total C. finmarchicus across all stages
+database$cfin_total <- rowSums(database %>% select(contains("calfin")), na.rm = TRUE)
+# Add column for total centropages across all stages
+database$ctyp_total <- rowSums(database %>% select(contains("ctyp")), na.rm = TRUE)
+# Add column for total pseudocalanus across all stages
+database$pseudo_total <- rowSums(database %>% select(contains("pseudo")), na.rm = TRUE)
+# Write database to csv for future use
+write_csv(database, file.path(fp_db, "zooplankton_database.csv"))
+```
+
+
