@@ -6,8 +6,11 @@
 #'
 #' @param config_path path to a config YAML file, or an already-loaded config list
 #' @param project whether to produce monthly projections after fitting
+#' @param keep_covariates the most covariate grid cells to return for mapping;
+#'   `0` returns none. See [thin_covariates()] for what is kept and why.
 #' @return a list with `config`, `data` (the labeled modeling data), `model` (the
-#'   `fit_patch_model()` result), and `projections` (or `NULL` if skipped)
+#'   `fit_patch_model()` result), `projections` (or `NULL` if skipped),
+#'   `covariate_means`, and `covariates` (a thinned grid, for mapping)
 #' @examples
 #' \dontrun{
 #' result <- run_taupatch(system.file("configs/mock_test.yaml", package = "taupatch"))
@@ -15,7 +18,7 @@
 #' result$projections
 #' }
 #' @export
-run_taupatch <- function(config_path, project = TRUE) {
+run_taupatch <- function(config_path, project = TRUE, keep_covariates = 50000) {
   config <- if (is.list(config_path)) config_path else load_config(config_path)
   dir.create(config$paths$output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -86,7 +89,13 @@ run_taupatch <- function(config_path, project = TRUE) {
 
   message("Output written to ", config$paths$output_dir)
   list(config = config, data = dat, model = model, projections = projections,
-       covariate_means = covariate_means)
+       covariate_means = covariate_means,
+       # A thinned copy, for looking at rather than modelling. The full grid is
+       # millions of points on a real fetch, and a map of every one of them
+       # would be a map of a subsample anyway once it hit the screen.
+       covariates = if (keep_covariates > 0) {
+         thin_covariates(env_dat, keep_covariates)
+       })
 }
 
 #' Write model artifacts to the output directory

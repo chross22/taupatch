@@ -205,6 +205,17 @@ ui <- fluidPage(
         sliderInput("years", "Years",
                     min = 1977, max = as.integer(format(Sys.Date(), "%Y")),
                     value = base_config$dates$years, step = 1, sep = ""),
+        # Fifty years across a sidebar column is about three years per pixel,
+        # so the slider cannot be landed on a particular one. The boxes are the
+        # precise way in; the two stay in step with each other.
+        fluidRow(
+          column(6, numericInput("year_from", "From", min = 1977,
+                                 max = as.integer(format(Sys.Date(), "%Y")),
+                                 value = base_config$dates$years[1], step = 1)),
+          column(6, numericInput("year_to", "To", min = 1977,
+                                 max = as.integer(format(Sys.Date(), "%Y")),
+                                 value = base_config$dates$years[2], step = 1))
+        ),
         sliderInput("months", "Months", min = 1, max = 12,
                     value = base_config$dates$months, step = 1)
       ),
@@ -362,7 +373,20 @@ tabPanel("Config", br(), verbatimTextOutput("config_yaml")),
         tabPanel("Covariate trends", br(),
                  p("Study-area mean of each covariate over the run's period."),
                  uiOutput("heatmap_controls"),
-                 plotOutput("covariate_heatmap", height = "480px"),
+                 plotOutput("covariate_heatmap", height = "480px",
+                            hover = hoverOpts("heatmap_hover", delay = 80,
+                                              delayType = "debounce")),
+                 uiOutput("heatmap_value"),
+                 br(),
+                 h4("Where the covariate is"),
+                 helpText("The field the model was given, drawn where it is. A",
+                          "covariate that failed to download, arrived on the",
+                          "wrong grid, or is masked over the wrong water shows",
+                          "here and not in a monthly mean. Missing cells are",
+                          "grey, which is what a patchy projection is asking",
+                          "about."),
+                 uiOutput("covariate_map_controls"),
+                 plotOutput("covariate_map", height = "520px"),
                  br(),
                  h4("Seasonal cycle"),
                  helpText("Each year drawn as its own line, so a year that",
@@ -425,6 +449,37 @@ server <- function(input, output, session) {
   # The database's stage columns differ per species - cfin carries CI..CVI while
   # ctyp and pseudo carry `adult` and combination columns - so the choices are
   # read from the data rather than from a fixed CI-CVI list.
+  # A typed range, when it is one. Half-finished edits - blank, or backwards
+  # while the second box is still being changed - fall back to the slider
+  # rather than being treated as a range nobody asked for.
+  typed_years <- function(from, to, slider) {
+    if (is.null(from) || is.null(to) || is.na(from) || is.na(to)) return(slider)
+    if (from > to) return(slider)
+    c(as.integer(from), as.integer(to))
+  }
+
+  # The slider and the two boxes are one value shown twice, so each follows the
+  # other. Guarded on equality, or they would bounce updates back and forth.
+  observeEvent(input$years, {
+    if (!identical(input$year_from, input$years[1])) {
+      updateNumericInput(session, "year_from", value = input$years[1])
+    }
+    if (!identical(input$year_to, input$years[2])) {
+      updateNumericInput(session, "year_to", value = input$years[2])
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(c(input$year_from, input$year_to), {
+    from <- input$year_from
+    to <- input$year_to
+    if (is.null(from) || is.null(to) || is.na(from) || is.na(to)) return()
+    # A typed range the wrong way round is a half-finished edit, not an error.
+    if (from > to) return()
+    if (!identical(c(from, to), input$years)) {
+      updateSliderInput(session, "years", value = c(from, to))
+    }
+  }, ignoreInit = TRUE)
+
   # Every taxon the loaded file carries, not only the ones the config was set
   # up for. A formatted export holds the whole survey.
   file_species <- reactive({
@@ -756,7 +811,12 @@ server <- function(input, output, session) {
       if (length(input$stages) > 0) input$stages else NULL
     config$species$resolved <- taupatch:::resolve_species(config)
 
-    config$dates$years <- input$years
+    # The boxes win when they hold a usable range. They are the precise input,
+    # and an observer syncing them to the slider is a round-trip to the browser:
+    # a run started between typing a year and the client echoing it back would
+    # otherwise use the year that was there before.
+    config$dates$years <- typed_years(input$year_from, input$year_to,
+                                      input$years)
     config$dates$months <- input$months
 
     if (isTRUE(input$projection_same)) {
@@ -876,6 +936,25 @@ server <- function(input, output, session) {
 
     withProgress(message = "Running taupatch", value = 0, {
       messages <- character()
+      # Checked before anything is downloaded. The failure is otherwise a wall
+      # of parallel-node errors arriving after the first request times out.
+      if (identical(config$covariates$source, "copernicus") &&
+          !nzchar(taupatch::copernicus_client())) {
+        run_log(paste(
+          "ERROR: the Copernicus Marine client was not found.",
+          "\n\nInstall it:  pip install copernicusmarine",
+          "\nSign in once: copernicusmarine login",
+          "\n\nIf it is installed but R cannot see it - which happens when the",
+          "app is launched from RStudio rather than a terminal, since that does",
+          "not inherit your shell's PATH - start the app after setting:",
+          "\n  options(datamatch.copernicusmarine = \"/full/path/to/copernicusmarine\")"
+        ))
+        run_result(NULL)
+        showNotification("Copernicus client not found - see the Log tab.",
+                         type = "error", duration = NULL)
+        return()
+      }
+
       result <- tryCatch(
         withCallingHandlers({
           incProgress(0.1, detail = "loading data")
@@ -1407,6 +1486,78 @@ server <- function(input, output, session) {
   output$covariate_heatmap <- renderPlot({
     req(run_result(), input$heatmap_covariate)
     plot_covariate_heatmap(run_result()$covariate_means, input$heatmap_covariate)
+  })
+
+  # A heatmap cell is a year and a month, and the value in it is the thing
+  # being read. ggplot has no tooltip, so the hover position is mapped back
+  # through the same factor levels the plot was built from.
+  output$heatmap_value <- renderUI({
+    req(run_result(), input$heatmap_covariate)
+    hover <- input$heatmap_hover
+    if (is.null(hover)) {
+      return(helpText("Hover a cell for its value."))
+    }
+
+    means <- run_result()$covariate_means
+    subset <- means[means$covariate == input$heatmap_covariate, ]
+    years <- sort(unique(subset$year))
+    months <- rev(month.abb)
+
+    # Discrete axes are drawn at 1..n, so the nearest integer is the cell.
+    xi <- round(hover$x)
+    yi <- round(hover$y)
+    if (is.na(xi) || is.na(yi) || xi < 1 || xi > length(years) ||
+        yi < 1 || yi > length(months)) {
+      return(helpText("Hover a cell for its value."))
+    }
+
+    month_number <- match(months[yi], month.abb)
+    cell <- subset[subset$year == years[xi] & subset$month == month_number, ]
+    if (nrow(cell) == 0) {
+      return(helpText(months[yi], " ", years[xi], ": no data"))
+    }
+
+    units <- taupatch:::covariate_units(input$heatmap_covariate)
+    div(
+      style = "font-size: 14px; padding: 4px 0;",
+      strong(paste0(months[yi], " ", years[xi], ": ")),
+      signif(cell$mean[1], 4),
+      if (nzchar(units)) tags$span(style = "color: #666;", " ", units)
+    )
+  })
+
+  output$covariate_map_controls <- renderUI({
+    result <- run_result()
+    if (is.null(result) || is.null(result$covariates)) {
+      return(helpText("Run a model first - covariate maps appear here once it",
+                      "finishes."))
+    }
+    steps <- unique(sf::st_drop_geometry(result$covariates)[c("YEAR", "MONTH")])
+    steps <- steps[order(steps$YEAR, steps$MONTH), ]
+
+    fluidRow(
+      column(5, selectInput("map_covariate", "Covariate",
+                            choices = datamatch::covariate_columns(result$covariates))),
+      column(5, selectInput("map_step", "Month",
+                            choices = stats::setNames(
+                              seq_len(nrow(steps)),
+                              paste(month.name[steps$MONTH], steps$YEAR)
+                            )))
+    )
+  })
+
+  output$covariate_map <- renderPlot({
+    result <- run_result()
+    validate(need(!is.null(result) && !is.null(result$covariates),
+                  "Run a model to see covariate maps."))
+    req(input$map_covariate, input$map_step)
+
+    steps <- unique(sf::st_drop_geometry(result$covariates)[c("YEAR", "MONTH")])
+    steps <- steps[order(steps$YEAR, steps$MONTH), ]
+    step <- steps[as.integer(input$map_step), ]
+
+    plot_covariate_map(result$covariates, input$map_covariate,
+                       step$YEAR, step$MONTH)
   })
 
   output$covariate_seasonal <- renderPlot({

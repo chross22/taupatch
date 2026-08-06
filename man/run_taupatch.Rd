@@ -4,16 +4,20 @@
 \alias{run_taupatch}
 \title{Run the full taupatch pipeline}
 \usage{
-run_taupatch(config_path, project = TRUE)
+run_taupatch(config_path, project = TRUE, keep_covariates = 50000)
 }
 \arguments{
 \item{config_path}{path to a config YAML file, or an already-loaded config list}
 
 \item{project}{whether to produce monthly projections after fitting}
+
+\item{keep_covariates}{the most covariate grid cells to return for mapping;
+\code{0} returns none. See \code{\link[=thin_covariates]{thin_covariates()}} for what is kept and why.}
 }
 \value{
 a list with \code{config}, \code{data} (the labeled modeling data), \code{model} (the
-\code{fit_patch_model()} result), and \code{projections} (or \code{NULL} if skipped)
+\code{fit_patch_model()} result), \code{projections} (or \code{NULL} if skipped),
+\code{covariate_means}, and \code{covariates} (a thinned grid, for mapping)
 }
 \description{
 Loads a config and runs every stage in order: read zooplankton stations, fetch

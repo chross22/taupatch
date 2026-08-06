@@ -397,3 +397,114 @@ predictor_names <- function(dat, config) {
   candidates <- setdiff(names(dat), non_predictors)
   candidates[vapply(dat[candidates], is.numeric, logical(1))]
 }
+
+#' Thin a covariate grid to a bounded number of cells
+#'
+#' A Copernicus fetch over a decade is millions of grid points, which is why
+#' [run_taupatch()] summarises the covariates rather than returning them. But a
+#' summary cannot be mapped, and a map is the fastest way to see that a covariate
+#' is wrong — a field of zeros, a land mask in the wrong place, a month that
+#' failed to download.
+#'
+#' This keeps a regular subsample: every nth location, the same ones in every
+#' time step, chosen so the whole object stays under `max_cells`. A map drawn
+#' from it is coarser than the data and shows the same thing, which is what it is
+#' for. Nothing modelled is thinned; this is a copy kept for looking at.
+#'
+#' Locations rather than rows, because dropping rows at random would give a
+#' different set of points each month and a map that flickers between them.
+#'
+#' @param env_dat covariate data from [fetch_covariates()]
+#' @param max_cells the most rows to keep across all time steps
+#' @return `env_dat`, or a subsample of its locations
+#' @examples
+#' \dontrun{
+#' thin_covariates(env_dat, max_cells = 20000)
+#' }
+#' @export
+thin_covariates <- function(env_dat, max_cells = 50000) {
+  if (nrow(env_dat) <= max_cells) return(env_dat)
+
+  coords <- sf::st_coordinates(env_dat)
+  key <- paste(coords[, 1], coords[, 2], sep = ",")
+  locations <- unique(key)
+  steps <- max(1L, round(nrow(env_dat) / length(locations)))
+
+  # How many locations fit in the budget once every step keeps each of them.
+  keep_n <- max(1L, floor(max_cells / steps))
+  if (keep_n >= length(locations)) return(env_dat)
+
+  every <- ceiling(length(locations) / keep_n)
+  kept <- locations[seq(1, length(locations), by = every)]
+
+  out <- env_dat[key %in% kept, ]
+  attr(out, "thinned") <- TRUE
+  attr(out, "upsampled") <- attr(env_dat, "upsampled")
+  out
+}
+
+#' Map one covariate for one month
+#'
+#' What the model was actually given, drawn where it is. A covariate that failed
+#' to download, arrived on the wrong grid, or is masked over the wrong water is
+#' obvious here and invisible in a monthly mean.
+#'
+#' @param env_dat covariate data from [fetch_covariates()], or the thinned copy
+#'   a run returns
+#' @param covariate which covariate to draw
+#' @param year,month the time step to draw
+#' @param path optional file to write the plot to instead of returning it
+#' @return a `ggplot` object, or `path` invisibly when writing
+#' @examples
+#' \dontrun{
+#' plot_covariate_map(result$covariates, "SST", 2010, 6)
+#' }
+#' @export
+plot_covariate_map <- function(env_dat, covariate, year, month, path = NULL) {
+  available <- datamatch::covariate_columns(env_dat)
+  if (!(covariate %in% available)) {
+    stop("No covariate '", covariate, "'. Available: ",
+         paste(available, collapse = ", "), call. = FALSE)
+  }
+
+  slice <- env_dat[env_dat$YEAR == year & env_dat$MONTH == month, ]
+  if (nrow(slice) == 0) {
+    stop("No covariate data for ", year, "-", sprintf("%02d", month), ".",
+         call. = FALSE)
+  }
+
+  coords <- sf::st_coordinates(slice)
+  frame <- data.frame(lon = coords[, 1], lat = coords[, 2],
+                      value = sf::st_drop_geometry(slice)[[covariate]])
+
+  # Missing cells drawn rather than dropped: where a covariate has no value is
+  # exactly what a patchy projection is asking about.
+  missing <- frame[is.na(frame$value), ]
+
+  p <- ggplot2::ggplot(frame[!is.na(frame$value), ],
+                       ggplot2::aes(x = .data$lon, y = .data$lat,
+                                    colour = .data$value)) +
+    coastline_layer(frame) +
+    ggplot2::geom_point(size = 1.1, shape = 15) +
+    ggplot2::scale_colour_viridis_c(option = "magma",
+                                    name = axis_label(covariate)) +
+    ggplot2::coord_quickmap() +
+    ggplot2::labs(title = paste0(covariate_label(covariate), " - ",
+                                 month.name[month], " ", year),
+                  subtitle = if (nrow(missing) > 0) {
+                    paste0(nrow(missing), " of ", nrow(frame),
+                           " cells missing (grey)")
+                  },
+                  x = NULL, y = NULL) +
+    ggplot2::theme_minimal()
+
+  if (nrow(missing) > 0) {
+    p <- p + ggplot2::geom_point(data = missing, inherit.aes = FALSE,
+                                 ggplot2::aes(x = .data$lon, y = .data$lat),
+                                 colour = "grey80", size = 1.1, shape = 15)
+  }
+
+  if (is.null(path)) return(p)
+  ggplot2::ggsave(path, plot = p, width = 7, height = 6, dpi = 150)
+  invisible(path)
+}
