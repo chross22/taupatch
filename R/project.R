@@ -11,8 +11,20 @@
 #' @param config a config list, as returned by `load_config()`
 #' @param bathy optional static bathymetry `SpatRaster` from `fetch_bathymetry()`,
 #'   attached to every month since it does not vary in time
-#' @return a tibble with `year`, `month`, `n_cells`, and the `geotiff`/`png` paths
-#'   written for each projection
+#' @section What it projects onto:
+#' Every cell of the covariate grid for that month, not the station locations.
+#' Stations are used to fit the model and play no part here. The grid's
+#' resolution is the one the covariates were joined onto, which
+#' `covariates.grid` decides and any `covariates.prejoin` resampling can change,
+#' so projecting finer means changing those rather than anything in this block.
+#'
+#' Cells missing any predictor are dropped, and the count is reported per month
+#' along with the predictor most often responsible. That is usually a
+#' neighbourhood step, which is undefined on the study-area border, or a lag,
+#' which is undefined in the first month of the record.
+#'
+#' @return a tibble with `year`, `month`, `n_cells` (predicted), `n_grid` (cells
+#'   available), `resolution` in degrees, and the `geotiff`/`png` paths written
 #' @export
 project_patch_model <- function(model, env_dat, config, bathy = NULL) {
   proj_dir <- file.path(config$paths$output_dir, "projections")
@@ -27,6 +39,15 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
   months <- seq(config$projection$months[1], config$projection$months[2])
   species <- config$species$resolved$name
 
+  # The projection lands on whatever grid the join produced, which is a
+  # consequence of `covariates.grid` and of any prejoin resampling rather than a
+  # projection setting. Stated up front, because a map's resolution is otherwise
+  # only discoverable by opening the GeoTIFF.
+  resolution <- grid_spacing(env_dat)
+  message("  projecting onto a ", signif(resolution, 3), " degree grid (~",
+          round(resolution * 111), " km), the grid the covariates were joined ",
+          "onto")
+
   results <- list()
   for (year in years) {
     for (month in months) {
@@ -37,6 +58,27 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
       }
 
       predicted <- predict_grid(model, grid)
+      # A cell is dropped when any predictor is missing there. With a gradient or
+      # a front among them that is the whole border of the study area, and with a
+      # lag it is the first month - neither of which is obvious from the map.
+      dropped <- nrow(grid) - (if (is.null(predicted)) 0 else nrow(predicted))
+      if (dropped > 0 && !is.null(predicted)) {
+        incomplete <- vapply(model$predictors, function(v) {
+          sum(is.na(grid[[v]]))
+        }, integer(1))
+        # Every predictor with gaps, not just the worst one. Which covariate is
+        # punching the holes is the only thing worth knowing here, and guessing
+        # at the cause from the shape of the map is how the wrong covariate gets
+        # blamed.
+        culprits <- sort(incomplete[incomplete > 0], decreasing = TRUE)
+        message("  ", year, "-", sprintf("%02d", month), ": ", dropped, " of ",
+                nrow(grid), " cells dropped (",
+                round(100 * dropped / nrow(grid)), "% of the grid)")
+        message("    missing per predictor: ",
+                paste0(names(culprits), " ", culprits,
+                       " (", round(100 * culprits / nrow(grid)), "%)",
+                       collapse = ", "))
+      }
       if (is.null(predicted)) {
         # Normal for the first month of the record once a lag, integral, or
         # temporal gradient is configured: those are undefined there, so no cell
@@ -70,6 +112,7 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
 
       results[[length(results) + 1]] <- tibble::tibble(
         year = year, month = month, n_cells = nrow(predicted),
+        n_grid = nrow(grid), resolution = resolution,
         geotiff = geotiff_path, png = png_path
       )
     }

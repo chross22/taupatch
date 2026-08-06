@@ -17,8 +17,8 @@ project_patch_model(model, env_dat, config, bathy = NULL)
 attached to every month since it does not vary in time}
 }
 \value{
-a tibble with \code{year}, \code{month}, \code{n_cells}, and the \code{geotiff}/\code{png} paths
-written for each projection
+a tibble with \code{year}, \code{month}, \code{n_cells} (predicted), \code{n_grid} (cells
+available), \code{resolution} in degrees, and the \code{geotiff}/\code{png} paths written
 }
 \description{
 Predicts patch probability across the covariate grid for every configured
@@ -27,3 +27,17 @@ day-of-year is a predictor and the covariates themselves are monthly — the sam
 arrangement as \code{original/buildZoopModel.R}, without the \code{raster}/\verb{/1000}/manual
 CRS-string handling it needed to read biomod2's output back off disk.
 }
+\section{What it projects onto}{
+
+Every cell of the covariate grid for that month, not the station locations.
+Stations are used to fit the model and play no part here. The grid's
+resolution is the one the covariates were joined onto, which
+\code{covariates.grid} decides and any \code{covariates.prejoin} resampling can change,
+so projecting finer means changing those rather than anything in this block.
+
+Cells missing any predictor are dropped, and the count is reported per month
+along with the predictor most often responsible. That is usually a
+neighbourhood step, which is undefined on the study-area border, or a lag,
+which is undefined in the first month of the record.
+}
+

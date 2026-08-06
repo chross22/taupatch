@@ -831,6 +831,11 @@ server <- function(input, output, session) {
       chosen[[picked]] <- c(chosen[[picked]], v)
     }
     config$covariates$transform <- chosen
+    # Always Copernicus from the app. The shipped config says `mock` so the
+    # package can be tried without credentials, and inheriting that here meant
+    # real stations were being modelled against invented covariates with nothing
+    # saying so. A synthetic run is a headless one.
+    config$covariates$source <- "copernicus"
     config$covariates$normalize <- isTRUE(input$normalize)
 
     # Fetched in parallel by default here, which a headless run leaves to the
@@ -1148,7 +1153,27 @@ server <- function(input, output, session) {
       return(helpText("This run produced no projections."))
     }
     downloadable <- sum(!is.na(projections$geotiff))
+    coverage <- if (all(c("n_cells", "n_grid") %in% names(projections))) {
+      worst <- projections[which.min(projections$n_cells / projections$n_grid), ]
+      if (worst$n_cells < worst$n_grid) {
+        helpText(
+          class = if (worst$n_cells < 0.8 * worst$n_grid) "text-warning" else NULL,
+          sprintf("Grid: %s degrees (~%s km). Thinnest month maps %d of %d cells (%d%%).",
+                  signif(worst$resolution, 3), round(worst$resolution * 111),
+                  worst$n_cells, worst$n_grid,
+                  round(100 * worst$n_cells / worst$n_grid)),
+          if (worst$n_cells < 0.8 * worst$n_grid) {
+            paste("A cell is dropped where any predictor is missing, which is",
+                  "what makes a map look patchy. Gaps in a satellite covariate",
+                  "are the usual cause - fill them with a fill_gaps step - and a",
+                  "gradient or front losing the study-area border is the other.")
+          }
+        )
+      }
+    }
+
     tagList(
+      coverage,
       fluidRow(
         column(5, selectInput("projection", "Month",
                               choices = stats::setNames(
