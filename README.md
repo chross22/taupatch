@@ -621,11 +621,11 @@ projection:                   # months that get mapped; omit to reuse the above
 
 ## The app
 
-Upload your own station CSV directly in the sidebar. The app reads it in place
-and copies nothing. Before a run starts it checks the file against the config's
-declared columns, and reports which species in the catalog resolve to columns
-actually in the file. The default 5 MB Shiny upload cap is raised to 200 MB.
-Change it with `run_taupatch_app(max_upload_mb = ...)`.
+Point the sidebar at your own station CSV by path. The file is read where it
+already is and never copied, so the config you download afterwards points at the
+real database rather than at a temporary copy. Before a run starts the app checks
+the file against the config's declared columns, and reports which species in the
+catalog resolve to columns actually in the file.
 
 ```r
 run_taupatch_app()                              # synthetic data
@@ -637,6 +637,12 @@ run the model. Tabs:
 
 - **Config** — the exact YAML a run would use, so anything done in the GUI is
   reproducible from a config file
+- **Derived covariates** — picked by the column they produce ("Spatial gradient
+  of SST") rather than by naming a derivoce step. The options depend on what you
+  have selected: current speed appears once both velocity components are in, and
+  a derived covariate whose source you deselect disappears with it. Steps needing
+  a choice with no sensible default (Lyapunov exponents, contours at particular
+  levels, lags of other than one month) stay in the YAML.
 - **Covariates** — every covariate's units, long name, and source dataset; click
   one for its full definition
 - **Results** — cross-validated metrics, variable importance, threshold used

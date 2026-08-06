@@ -9,8 +9,6 @@
 #'
 #' @param config_path path to a config YAML used as the app's starting state;
 #'   defaults to the shipped mock config, which runs without network access
-#' @param max_upload_mb largest zooplankton CSV the app will accept as an
-#'   upload, in megabytes
 #' @param output_dir where runs launched from the app write their output;
 #'   defaults to a session temporary directory
 #' @param ... passed to `shiny::runApp()`
@@ -24,8 +22,7 @@
 #' run_taupatch_app("inst/configs/ctyp_gom.yaml")
 #' }
 #' @export
-run_taupatch_app <- function(config_path = NULL, output_dir = NULL,
-                             max_upload_mb = 200, ...) {
+run_taupatch_app <- function(config_path = NULL, output_dir = NULL, ...) {
   for (pkg in c("shiny", "leaflet")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop("The '", pkg, "' package is required to run the app. ",
@@ -62,12 +59,7 @@ run_taupatch_app <- function(config_path = NULL, output_dir = NULL,
     stop("Could not locate the app directory in the installed package.", call. = FALSE)
   }
 
-  # Shiny caps uploads at 5 MB by default, which the zooplankton database is
-  # comfortably over. Raised so the app's file picker is actually usable, and a
-  # parameter rather than a constant since the ceiling is really about the
-  # machine the app is running on.
-  withr_options <- options(taupatch.app_config = config,
-                           shiny.maxRequestSize = max_upload_mb * 1024^2)
+  withr_options <- options(taupatch.app_config = config)
   on.exit(options(withr_options), add = TRUE)
 
   invisible(shiny::runApp(app_dir, ...))

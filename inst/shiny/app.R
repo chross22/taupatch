@@ -3,6 +3,10 @@ library(taupatch)
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
+# A relative path in the box is relative to where the app was launched, which is
+# what someone typing "data/zoop.csv" means.
+is_absolute <- function(path) grepl("^(/|~|[A-Za-z]:[\\\\/])", path)
+
 # Drops the trailing ".0" that a 0.01-step slider otherwise produces, so the
 # note reads "top 15%" rather than "top 15.0%".
 format_percent <- function(x) format(round(x, 1), trim = TRUE, drop0trailing = TRUE)
@@ -127,7 +131,8 @@ ui <- fluidPage(
     sidebarPanel(
       width = 3,
       h4("Data"),
-      fileInput("zoop_upload", "Zooplankton CSV", accept = c(".csv", "text/csv")),
+      textInput("zoop_path", "Path to a CSV on this machine",
+                value = "", placeholder = "data/zooplankton_database.csv"),
       uiOutput("data_status"),
 
       hr(),
@@ -200,6 +205,11 @@ ui <- fluidPage(
       selectInput("bathymetry", "Seafloor (static)", multiple = TRUE,
                   choices = bathymetry_choices,
                   selected = base_config$covariates$bathymetry %||% character(0)),
+      # Choices depend on what is selected above, so they are filled in by an
+      # observer rather than listed here.
+      selectInput("derived", "Derived", multiple = TRUE, choices = character(0),
+                  selected = character(0)),
+      uiOutput("derived_note"),
       # Choices are narrowed to what is actually selected above, by the observer
       # in the server. Offering unselected covariates here would let a config
       # name a transform for something the run never fetches, which config
@@ -313,10 +323,17 @@ server <- function(input, output, session) {
   # pointed at - the mock database for a default session. Everything that reads
   # the station data goes through here rather than at base_config directly, so
   # an upload takes effect everywhere at once.
+  # A path rather than a browser upload. The station database is read where it
+  # already is, which keeps a downloaded config usable afterwards - an uploaded
+  # copy would live in a per-session temporary directory and be gone tomorrow.
   zoop_path <- reactive({
-    upload <- input$zoop_upload
-    if (is.null(upload)) return(base_config$paths$zoop_file)
-    upload$datapath
+    typed <- trimws(input$zoop_path %||% "")
+    if (!nzchar(typed)) return(base_config$paths$zoop_file)
+    if (is_absolute(typed)) typed else file.path(getwd(), typed)
+  })
+
+  zoop_source <- reactive({
+    if (nzchar(trimws(input$zoop_path %||% ""))) "path" else "default"
   })
 
   stage_choices <- reactive({
@@ -340,10 +357,17 @@ server <- function(input, output, session) {
   # Says what the file is before a run is started, rather than letting a missing
   # column surface as a failure after the covariates have been downloaded.
   output$data_status <- renderUI({
-    if (is.null(input$zoop_upload)) {
-      return(helpText("Using the session default. Upload a CSV to model your own",
-                      "stations - it is read in place and never copied anywhere."))
+    if (identical(zoop_source(), "default")) {
+      return(helpText("Using the session default. Give the path to your own",
+                      "station CSV to model it instead. It is read where it is",
+                      "and never copied, so the config you download afterwards",
+                      "points at the real file."))
     }
+    if (identical(zoop_source(), "path") && !file.exists(zoop_path())) {
+      return(div(class = "text-danger",
+                 strong("No file at that path: "), tags$code(zoop_path())))
+    }
+
     header <- data_header()
     if (is.null(header)) {
       return(div(class = "text-danger",
@@ -367,7 +391,7 @@ server <- function(input, output, session) {
     ]
 
     tagList(
-      div(strong(input$zoop_upload$name), " - ", length(header), " columns"),
+      div(strong(basename(zoop_path())), " - ", length(header), " columns"),
       if (!is.null(check)) {
         div(class = "text-danger", style = "font-size: 12px; margin-top: 6px;",
             strong("Not usable yet: "), check)
@@ -496,6 +520,14 @@ server <- function(input, output, session) {
     config$covariates$selected <- input$covariates
     config$covariates$bathymetry <- input$bathymetry %||% character()
 
+    # Derived covariates are named by the column they produce; the config wants
+    # the step that produces it. Rebuilt from the current selection rather than
+    # remembered, so a derived covariate whose source was deselected disappears
+    # with it instead of failing validation.
+    config$covariates$derivoce <- derivoce_steps_for(
+      input$derived, config$covariates$selected, config$covariates$bathymetry
+    )
+
     # The sidebar owns the transform block outright, so a stale log_transform
     # from the config the app opened on cannot survive alongside it and be
     # merged back in by covariate_transform_spec().
@@ -507,8 +539,10 @@ server <- function(input, output, session) {
     # transform still names it, and a run started in that window dies in config
     # validation rather than doing anything. Intersecting here means the config
     # is never in that state to begin with.
-    transform_vars <- intersect(input$transform_vars,
-                                 c(input$covariates, input$bathymetry))
+    transform_vars <- intersect(
+      input$transform_vars,
+      c(input$covariates, input$bathymetry, derivoce_names(config))
+    )
     config$covariates$transform <- if (length(transform_vars) > 0) {
       stats::setNames(list(transform_vars), input$transform_type)
     } else {
@@ -785,13 +819,71 @@ server <- function(input, output, session) {
     contentType = "application/zip"
   )
 
+  # What can be derived depends on what was fetched: a gradient of SST needs
+  # SST, and current speed needs both components. Recomputed as the selection
+  # changes, dropping anything that is no longer buildable.
+  derived_candidates <- reactive({
+    derivoce_choices(input$covariates %||% character(),
+                     input$bathymetry %||% character())
+  })
+
+  observe({
+    candidates <- derived_candidates()
+    choices <- lapply(split(candidates, vapply(candidates, function(x) x$group,
+                                                character(1))),
+                      function(group) {
+                        stats::setNames(
+                          vapply(group, function(x) x$id, character(1)),
+                          vapply(group, function(x) {
+                            paste0(x$label, if (x$expensive) "  (slow)" else "")
+                          }, character(1))
+                        )
+                      })
+
+    available <- vapply(candidates, function(x) x$id, character(1))
+    updateSelectInput(session, "derived", choices = choices,
+                      selected = intersect(isolate(input$derived), available))
+  })
+
+  output$derived_note <- renderUI({
+    chosen <- input$derived
+    if (length(chosen) == 0) {
+      return(helpText("Covariates computed from the grid rather than downloaded",
+                      "- gradients, fronts, lags, accumulations. They are",
+                      "computed before stations are matched, because a gradient",
+                      "is a property of the field. Options depend on what is",
+                      "selected above."))
+    }
+    slow <- Filter(function(x) x$id %in% chosen && x$expensive, derived_candidates())
+    lagged <- grepl("_lag|_int|_tgrad", chosen)
+
+    tagList(
+      helpText(length(chosen), " derived covariate(s) selected."),
+      if (any(lagged)) {
+        helpText(class = "text-warning",
+                 "Lags, accumulations and rates of change are undefined in the",
+                 "first month of the record, so those stations drop out and that",
+                 "month is not mapped.")
+      },
+      if (length(slow) > 0) {
+        helpText(class = "text-warning",
+                 "The distance covariates run a distance transform per month.",
+                 "Expect minutes rather than seconds on a full Copernicus grid.")
+      }
+    )
+  })
+
   # Keep the transform choices in step with what is actually selected above.
   # updateSelectInput rather than re-rendering the control, so an existing
   # selection survives; a selection that is no longer available is dropped, since
   # config validation rejects a transform naming an unfetched covariate.
   observe({
-    available <- c(input$covariates, input$bathymetry)
-    labels <- c(covariate_choices, bathymetry_choices)
+    derived <- vapply(derived_candidates(), function(x) x$id, character(1))
+    derived <- intersect(derived, input$derived %||% character())
+    available <- c(input$covariates, input$bathymetry, derived)
+
+    labels <- c(covariate_choices, bathymetry_choices,
+                stats::setNames(derived, derived))
     choices <- labels[labels %in% available]
 
     updateSelectInput(session, "transform_vars", choices = choices,

@@ -482,3 +482,117 @@ validate_derivoce <- function(config) {
   }
   invisible(TRUE)
 }
+
+#' Derived covariates offerable for a given covariate selection
+#'
+#' [derivoce_covariates()] describes step *types*, which is what a config writes
+#' and not what a person picks. A person picks a covariate: "the gradient of
+#' SST", not "a horizontal_gradient step whose vars are SST". This turns a
+#' selection of fetched covariates into the concrete derived covariates that can
+#' be built from it, each already carrying the config step that produces it.
+#'
+#' This is the app's covariate picker, and it is deliberately a subset of what a
+#' config can express. Steps needing a choice with no sensible default — the
+#' Lyapunov exponents, a contour at particular levels, a lag of other than one
+#' step — are left to the YAML, where the choice can be made explicitly rather
+#' than guessed at.
+#'
+#' @param selected time-varying covariate names, as in `covariates.selected`
+#' @param bathymetry static covariate names, as in `covariates.bathymetry`
+#' @return a list of candidates, each with `id` (the column it produces),
+#'   `label`, `group`, `expensive`, and `step` (the `covariates.derivoce` entry)
+#' @examples
+#' choices <- derivoce_choices(c("SST", "BOTT", "CHL"))
+#' vapply(choices, function(x) x$id, character(1))
+#' @seealso [derivoce_steps_for()] to turn chosen ids back into config steps
+#' @export
+derivoce_choices <- function(selected, bathymetry = character()) {
+  selected <- as.character(selected)
+  bathymetry <- as.character(bathymetry)
+
+  candidate <- function(id, label, group, step, expensive = FALSE) {
+    list(id = id, label = label, group = group, expensive = expensive, step = step)
+  }
+
+  # One per fetched covariate. These are the cheap ones, and the ones a habitat
+  # model reaches for most.
+  per_covariate <- list(
+    list(type = "horizontal_gradient", suffix = "_grad", group = "Spatial",
+         label = "Spatial gradient of %s (per km)", expensive = FALSE,
+         step = function(v) list(type = "horizontal_gradient", vars = v)),
+    list(type = "temporal_gradient", suffix = "_tgrad", group = "Temporal",
+         label = "Rate of change in %s (per month)", expensive = FALSE,
+         step = function(v) list(type = "temporal_gradient", vars = v,
+                                 per = "month")),
+    list(type = "lag_covariate", suffix = "_lag1", group = "Temporal",
+         label = "%s one month earlier", expensive = FALSE,
+         step = function(v) list(type = "lag_covariate", vars = v, n = 1)),
+    list(type = "integrate_covariate", suffix = "_int", group = "Temporal",
+         label = "%s accumulated since January", expensive = FALSE,
+         step = function(v) list(type = "integrate_covariate", vars = v,
+                                 window = "year")),
+    list(type = "distance_to_front", suffix = "_front_dist", group = "Spatial",
+         label = "Distance to the nearest %s front (km)", expensive = TRUE,
+         step = function(v) list(type = "distance_to_front", var = v))
+  )
+
+  out <- list()
+  for (entry in per_covariate) {
+    for (v in selected) {
+      out[[length(out) + 1]] <- candidate(
+        paste0(v, entry$suffix), sprintf(entry$label, v), entry$group,
+        entry$step(v), entry$expensive
+      )
+    }
+  }
+
+  # Steps that read particular covariates, offered only when those were fetched.
+  if (all(c("SST", "BOTT") %in% selected)) {
+    out[[length(out) + 1]] <- candidate(
+      "SST_BOTT_vgrad", "Stratification (surface minus bottom temperature)",
+      "Spatial", list(type = "vertical_gradient", surface = "SST", bottom = "BOTT")
+    )
+  }
+  if (all(c("UO", "VO") %in% selected)) {
+    out[[length(out) + 1]] <- candidate(
+      "speed", "Current speed", "Flow",
+      list(type = "current_speed")
+    )
+    out[[length(out) + 1]] <- candidate(
+      "EKE", "Eddy kinetic energy", "Flow",
+      list(type = "eke")
+    )
+  }
+  if ("DEPTH" %in% bathymetry) {
+    out[[length(out) + 1]] <- candidate(
+      "isobath_dist_100", "Distance to the 100 m isobath (km)", "Spatial",
+      list(type = "distance_to_isobath", levels = 100), expensive = TRUE
+    )
+  }
+  out[[length(out) + 1]] <- candidate(
+    "shore_dist", "Distance to shore (km)", "Spatial",
+    list(type = "distance_to_shore"), expensive = TRUE
+  )
+
+  out
+}
+
+#' Config steps for a set of chosen derived covariates
+#'
+#' Ordered as [derivoce_choices()] lists them rather than as they were picked,
+#' so a run does not depend on the order someone happened to click in.
+#'
+#' @param ids column names chosen from [derivoce_choices()]
+#' @param selected time-varying covariate names
+#' @param bathymetry static covariate names
+#' @return a list suitable for `covariates.derivoce`
+#' @examples
+#' derivoce_steps_for("SST_grad", selected = c("SST", "CHL"))
+#' @export
+derivoce_steps_for <- function(ids, selected, bathymetry = character()) {
+  if (length(ids) == 0) return(list())
+
+  choices <- derivoce_choices(selected, bathymetry)
+  chosen <- Filter(function(x) x$id %in% ids, choices)
+  lapply(chosen, function(x) x$step)
+}

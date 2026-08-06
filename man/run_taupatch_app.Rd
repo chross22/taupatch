@@ -4,12 +4,7 @@
 \alias{run_taupatch_app}
 \title{Launch the taupatch Shiny app}
 \usage{
-run_taupatch_app(
-  config_path = NULL,
-  output_dir = NULL,
-  max_upload_mb = 200,
-  ...
-)
+run_taupatch_app(config_path = NULL, output_dir = NULL, ...)
 }
 \arguments{
 \item{config_path}{path to a config YAML used as the app's starting state;
@@ -17,9 +12,6 @@ defaults to the shipped mock config, which runs without network access}
 
 \item{output_dir}{where runs launched from the app write their output;
 defaults to a session temporary directory}
-
-\item{max_upload_mb}{largest zooplankton CSV the app will accept as an
-upload, in megabytes}
 
 \item{...}{passed to \code{shiny::runApp()}}
 }
