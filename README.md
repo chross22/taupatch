@@ -4,6 +4,33 @@
 [![R-CMD-check](https://github.com/chross22/taupatch/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/chross22/taupatch/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
+<details>
+<summary><b>Contents</b></summary>
+
+- [Installation](#installation)
+- [Try it without any data](#try-it-without-any-data)
+- [Running on real data](#running-on-real-data)
+- [Configuration](#configuration)
+  - [A complete config, walked through](#a-complete-config-walked-through)
+  - [Three ways to get one](#three-ways-to-get-one)
+  - [Species and life stages](#species-and-life-stages)
+  - [Thresholds](#thresholds)
+  - [Covariates](#covariates)
+  - [Derived covariates](#derived-covariates)
+  - [Transformations](#transformations)
+  - [Preparing covariates before the join](#preparing-covariates-before-the-join)
+  - [Combining products of different resolution](#combining-products-of-different-resolution)
+  - [Model type](#model-type)
+  - [Training and projection windows](#training-and-projection-windows)
+- [The app](#the-app)
+  - [Reading the evaluation](#reading-the-evaluation)
+- [Outputs](#outputs)
+- [Repository layout](#repository-layout)
+- [Citation](#citation)
+
+</details>
+
+
 Monthly spatial habitat suitability models for **high-abundance zooplankton
 patches** ("tau-patches"), where a patch is any station whose abundance exceeds a
 species-specific threshold.
@@ -544,11 +571,24 @@ On top of that, each model contributes what only it can:
 | `gam` | Effective degrees of freedom per smooth — `edf` of 1 means the smooth collapsed to a line |
 | `rf` / `brt` | None; the partial effect curve *is* their answer |
 
+With [`fancygam`](https://github.com/chross22/fancygam) installed, a GAM also
+gets its **fitted smooths** drawn — each term with its standard error band and a
+rug showing where the data actually is. Those carry uncertainty, which a partial
+dependence curve cannot:
+
+```r
+remotes::install_github("chross22/fancygam")
+```
+
+Their x axes read in standard deviations, because the smooths belong to the model
+and the model was fitted on the recipe's output. Set `covariates.normalize: false`
+to read them in the covariate's own units — it costs a tree model nothing and a
+GAM little.
+
 These land in `diagnostics/` alongside the ROC and calibration plots, and in the
 app's Diagnostics tab. `model_engine_fit()` returns the underlying `ranger`,
-`xgb.Booster`, `glm`, or `mgcv` object for anything that wants to plot it
-directly — [`fancygam`](https://github.com/chross22/fancygam)'s `plotSmooths()`
-takes exactly that.
+`xgb.Booster`, `glm`, or `mgcv` object for anything else that wants to plot a
+model directly.
 
 **Variable importance is computed the same way for all four**: the drop in ROC
 AUC when a predictor is shuffled, averaged over several shuffles. Engine-reported
@@ -647,6 +687,7 @@ diagnostics/cv_predictions.csv     held-out predictions, for any metric not tabu
 diagnostics/partial_effects.png    what each predictor does to patch probability
 diagnostics/coefficients.png       glm only: signed effects with intervals
 diagnostics/smooth_terms.csv       gam only: effective degrees of freedom per smooth
+diagnostics/gam_smooths.png        gam only, with fancygam: fitted smooths with error bands
 projections/<species>_<year>_<month>.tif
 plots/<species>_<year>_<month>.png
 covariates/monthly_means.csv       study-area mean per covariate, month, and year

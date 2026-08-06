@@ -234,6 +234,90 @@ gam_smooth_terms <- function(fitted) {
   out[order(-out$edf), ]
 }
 
+#' Whether fancygam is available to draw smooths
+#'
+#' Its own function so the optional path can be exercised in tests without
+#' mocking `requireNamespace()` itself, which every package that loads a
+#' graphics device also goes through.
+#'
+#' @return `TRUE` when fancygam is installed
+#' @keywords internal
+has_fancygam <- function() {
+  requireNamespace("fancygam", quietly = TRUE)
+}
+
+#' Variables a fitted GAM gave a smooth to
+#'
+#' Not every predictor gets one — [model_formula()] gives a linear term to any
+#' predictor with too few distinct values to identify a smooth — so this reads
+#' back what the fitted model actually did rather than assuming.
+#'
+#' @param fitted a fitted `workflows::workflow()` whose model is an `mgcv` GAM
+#' @return character vector of variable names, in the model's own order
+#' @keywords internal
+gam_smoothed_variables <- function(fitted) {
+  terms <- rownames(summary(model_engine_fit(fitted))$s.table)
+  if (is.null(terms)) return(character())
+  # "s(SST)" -> "SST"
+  sub("^s\\((.*)\\)$", "\\1", terms)
+}
+
+#' Plot a GAM's fitted smooths, with fancygam
+#'
+#' The partial effect of each smooth term on the log-odds scale, with its
+#' standard error band and a rug showing where the data actually is. This is the
+#' exact version of [partial_effects()] for a GAM: read out of the fitted model
+#' rather than reconstructed by prediction, so it carries uncertainty, which a
+#' partial dependence curve cannot.
+#'
+#' Drawn by [fancygam](https://github.com/chross22/fancygam), which is a Suggests
+#' — a run without it still gets the generic partial effect curves.
+#'
+#' @section Why the axes read in standard deviations:
+#' The smooths belong to the model, and the model was fitted on the recipe's
+#' output — so `x` is whatever the recipe made of the predictor. With the default
+#' `covariates.normalize: true` that is standard deviations from the mean, and
+#' the rug is taken from the same baked data so the two line up. Set
+#' `covariates.normalize: false` to have these read in the covariate's own units;
+#' it costs a tree model nothing, and a GAM little.
+#'
+#' @param model a fitted model from [fit_patch_model()]
+#' @param vars which smooths to draw; `NULL` uses all of them
+#' @param path optional file to write the plot to instead of returning it
+#' @return a `patchwork`/`ggplot` object, or `path` invisibly when writing
+#' @examples
+#' \dontrun{
+#' plot_gam_smooths(model)
+#' }
+#' @seealso [gam_smooth_terms()] for the numbers behind these
+#' @export
+plot_gam_smooths <- function(model, vars = NULL, path = NULL) {
+  if (!has_fancygam()) {
+    stop("The 'fancygam' package is required to plot GAM smooths. ",
+         "Install it with remotes::install_github('chross22/fancygam').",
+         call. = FALSE)
+  }
+  workflow <- if (inherits(model, "workflow")) model else model$workflow
+
+  vars <- vars %||% gam_smoothed_variables(workflow)
+  if (length(vars) == 0) {
+    stop("This model has no smooth terms to plot.", call. = FALSE)
+  }
+
+  # The engine was fitted on the recipe's output, so gratia reports the smooths
+  # in those units. The rug has to come from the same baked frame or the two
+  # would be drawn on different x scales and quietly disagree.
+  baked <- as.data.frame(workflows::extract_mold(workflow)$predictors)
+
+  plot <- fancygam::combinePlots(model_engine_fit(workflow), baked, vars)
+
+  if (is.null(path)) return(plot)
+  ggplot2::ggsave(path, plot = plot, dpi = 150,
+                  width = max(7, 4 * min(length(vars), 2)),
+                  height = max(4, 3.2 * ceiling(length(vars) / 2)))
+  invisible(path)
+}
+
 #' Model-specific diagnostics for a fitted model
 #'
 #' Partial effects for every type, since the question "what does this predictor
@@ -279,6 +363,17 @@ write_effect_plots <- function(model, out) {
     if (!is.null(terms) && nrow(terms) > 0) {
       readr::write_csv(terms, file.path(out, "smooth_terms.csv"))
       written <- c(written, "smooth_terms.csv")
+    }
+
+    # The fitted smooths themselves, with their uncertainty. Skipped without a
+    # word when fancygam is absent: it is a Suggests, and the generic partial
+    # effect curves above already cover the question.
+    if (has_fancygam()) {
+      smooths <- try_diagnostic(
+        plot_gam_smooths(model, path = file.path(out, "gam_smooths.png")),
+        "GAM smooth plots"
+      )
+      if (!is.null(smooths)) written <- c(written, "gam_smooths.png")
     }
   }
 

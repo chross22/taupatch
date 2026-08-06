@@ -156,3 +156,68 @@ test_that("a failed diagnostic warns rather than passing silently", {
   expect_null(result)
   expect_equal(try_diagnostic(42, "something"), 42)
 })
+
+test_that("the smoothed variables are read back off the fitted model", {
+  skip_on_cran()
+  skip_if_not_installed("mgcv")
+  model <- fitted_of_type("gam")
+
+  smoothed <- gam_smoothed_variables(model$workflow)
+
+  # Read back rather than assumed: model_formula() gives a linear term to any
+  # predictor with too few distinct values to identify a smooth, so the two
+  # sets are not always the same.
+  expect_true(all(smoothed %in% model$predictors))
+  expect_gt(length(smoothed), 0)
+  # Names, not "s(name)".
+  expect_false(any(grepl("^s\\(", smoothed)))
+})
+
+test_that("fancygam draws the fitted smooths for a GAM", {
+  skip_on_cran()
+  skip_if_not_installed("mgcv")
+  skip_if_not_installed("fancygam")
+  model <- fitted_of_type("gam")
+
+  plot <- suppressMessages(plot_gam_smooths(model))
+  expect_s3_class(plot, "ggplot")
+
+  # Accepts a workflow directly, so it works on a model read back off disk.
+  expect_s3_class(suppressMessages(plot_gam_smooths(model$workflow)), "ggplot")
+
+  # And writes into the run's diagnostics alongside the generic curves.
+  out <- tempfile("diag"); dir.create(out)
+  suppressMessages(suppressWarnings(write_effect_plots(model, out)))
+  expect_true("gam_smooths.png" %in% list.files(out))
+})
+
+test_that("smooth plots are drawn against the data the model actually saw", {
+  skip_on_cran()
+  skip_if_not_installed("mgcv")
+  skip_if_not_installed("fancygam")
+  model <- fitted_of_type("gam")
+
+  # gratia reports the smooths in the recipe's output units, so the rug has to
+  # come from the same baked frame. Taking it from the raw model_data would
+  # draw the two on different x scales and quietly disagree.
+  baked <- workflows::extract_mold(model$workflow)$predictors
+  expect_setequal(names(baked), model$predictors)
+  # Normalizing is on by default, so the baked columns are centred.
+  expect_lt(abs(mean(baked$SST)), 1e-6)
+  expect_gt(abs(mean(model$model_data$SST)), 1)
+})
+
+test_that("without fancygam the run still gets its generic curves", {
+  skip_on_cran()
+  skip_if_not_installed("mgcv")
+  # fancygam is a Suggests: its absence removes the extra plot, not the
+  # diagnostics.
+  local_mocked_bindings(has_fancygam = function() FALSE)
+  out <- tempfile("diag"); dir.create(out)
+  suppressMessages(suppressWarnings(write_effect_plots(fitted_of_type("gam"), out)))
+  written <- list.files(out)
+
+  expect_false("gam_smooths.png" %in% written)
+  expect_true("partial_effects.png" %in% written)
+  expect_true("smooth_terms.csv" %in% written)
+})

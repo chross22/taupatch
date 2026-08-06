@@ -611,7 +611,20 @@ server <- function(input, output, session) {
       ))
     }
     if (identical(model$type, "gam")) {
+      smooths <- if (requireNamespace("fancygam", quietly = TRUE)) {
+        tagList(
+          h4("Fitted smooths"),
+          helpText("The model's own smooths, with their standard error bands and",
+                   "a rug showing where the data is. These carry uncertainty,",
+                   "which the partial effect curves above cannot. The x axes are",
+                   "in standard deviations because the model was fitted on the",
+                   "centred and scaled predictors - turn off 'Centre and scale'",
+                   "to read them in the covariate's own units."),
+          plotOutput("gam_smooths", height = "460px")
+        )
+      }
       return(tagList(
+        smooths,
         h4("Smooth terms"),
         helpText("Effective degrees of freedom per smooth. An edf of 1 means",
                  "the smooth collapsed to a straight line, so the flexibility",
@@ -625,6 +638,11 @@ server <- function(input, output, session) {
   output$glm_coefficients <- renderPlot({
     req(run_result())
     plot_glm_coefficients(glm_coefficients(run_result()$model$workflow))
+  })
+
+  output$gam_smooths <- renderPlot({
+    req(run_result())
+    suppressMessages(plot_gam_smooths(run_result()$model))
   })
 
   output$gam_terms <- renderTable({
