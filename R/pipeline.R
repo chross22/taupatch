@@ -33,14 +33,14 @@ run_taupatch <- function(config_path, project = TRUE) {
   bathy <- NULL
   if (length(config$covariates$bathymetry) > 0) {
     message("Fetching bathymetry (NOAA ETOPO)...")
-    bathy <- fetch_bathymetry(config)
+    bathy <- study_area_bathymetry(config)
   }
 
   message("Matching covariates to stations...")
   dat <- attach_covariates(dat, env_dat, config)
   dat <- add_derived_covariates(dat, config)
   if (!is.null(bathy)) {
-    dat <- attach_bathymetry(dat, bathy, config$covariates$bathymetry)
+    dat <- datamatch::attach_bathymetry(dat, bathy, config$covariates$bathymetry)
     # Stations on land or outside the bathymetry grid get NA depth; they cannot
     # be modeled and would otherwise be dropped silently inside the recipe.
     before <- nrow(dat)

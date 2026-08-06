@@ -11,14 +11,19 @@ a named list, one entry per covariate, each with \code{label}, \code{units}, and
 \code{description}
 }
 \description{
-Bathymetry and the terrain measures derived from it. These are \emph{static} — they
-do not vary by month or year — so they are fetched once for the study area and
-attached to every time step, unlike the Copernicus covariates.
+The definitions come from \code{\link[datamatch:bathymetry_variables]{datamatch::bathymetry_variables()}}, which owns them
+so every consumer describes a covariate identically.
 }
 \details{
-The original model used depth, slope, and distance to shore
-(\code{original/load_covars.R} lines 98-104), sourced from SRTM30 files on a server
-that no longer exists. They come from NOAA ETOPO via \code{marmap} now.
+These are \emph{static} — they do not vary by month or year — so they are fetched
+once for the study area and attached to every time step, unlike the Copernicus
+covariates. They replace the SRTM30 depth, slope, and distance-to-shore layers
+the original model used (\code{original/load_covars.R} lines 98-104), which came
+from a server that no longer exists.
+
+Fetching and attaching are \code{\link[datamatch:fetch_bathymetry]{datamatch::fetch_bathymetry()}} and
+\code{\link[datamatch:attach_bathymetry]{datamatch::attach_bathymetry()}} directly; this package only supplies the
+study area and cache location from a config.
 }
 \examples{
 names(bathymetry_covariates())

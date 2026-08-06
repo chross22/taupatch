@@ -18,6 +18,7 @@ Roxygen: list(markdown = TRUE)
 Depends:
     R (>= 4.1)
 Imports:
+    datamatch,
     dplyr,
     ggplot2,
     parsnip,
@@ -33,7 +34,6 @@ Imports:
     yaml,
     yardstick
 Suggests:
-    datamatch,
     copernicus,
     leaflet,
     ranger,

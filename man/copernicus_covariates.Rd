@@ -11,21 +11,23 @@ a named list, one entry per covariate, each with \code{label}, \code{units},
 \code{variable}, \code{product_id}, \code{dataset_id}, \code{depth}, and \code{description}
 }
 \description{
-Maps short, familiar names (\code{SST}, \code{CHL}, ...) onto the Copernicus Marine
-product, dataset, and variable that supply them, so a run names covariates the
-way people talk about them rather than by Copernicus variable code.
+The variable definitions come from \code{\link[datamatch:copernicus_variables]{datamatch::copernicus_variables()}}, which
+owns them so every consumer describes a covariate identically. This adds the
+one field the pipeline needs on top: the depth range to request.
 }
 \details{
 All entries are monthly means, matching this pipeline's monthly timescale.
-Physical variables come from the global physics reanalysis and biogeochemical
-ones from the global biogeochemistry reanalysis; covariates sharing a dataset
-are fetched together in one request.
+Covariates sharing a dataset are fetched together in one request.
 
 Copernicus revises dataset identifiers periodically. If a fetch fails with an
 unknown-dataset error, check the current identifier on the Copernicus Marine
-Data Store and override it in the config's \code{covariates.copernicus} block.
+Data Store (\code{datamatch::product_url()} links to the product page) and override
+it in the config's \code{covariates.copernicus} block.
 }
 \examples{
 names(copernicus_covariates())
 copernicus_covariates()$SST$units
+}
+\seealso{
+\code{\link[datamatch:variable_dictionary]{datamatch::variable_dictionary()}} for the full variable listing
 }

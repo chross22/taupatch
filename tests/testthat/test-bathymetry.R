@@ -1,67 +1,34 @@
-# A small synthetic marmap `bathy` object, so the conversion and attachment
-# logic can be tested without hitting the NOAA server.
-mock_bathy <- function(lon = seq(-70, -66, by = 0.5), lat = seq(41, 44, by = 0.5)) {
-  # marmap stores a matrix of elevations with lon as rows and lat as columns,
-  # land positive and depth negative.
-  elevation <- outer(lon, lat, function(x, y) {
-    depth <- -50 - 200 * (x + 70) / 4    # deepens offshore to the east
-    ifelse(y > 43.8, 30, depth)          # a strip of land along the north edge
-  })
-  dimnames(elevation) <- list(lon, lat)
-  class(elevation) <- "bathy"
-  elevation
-}
+# The conversion logic (elevation to positive depth, land masking, terrain
+# derivation) now lives in datamatch and is tested there. What matters here is
+# that taupatch delegates correctly and hands over the right study area.
 
-test_that("bathymetry_layers converts elevation to positive depth plus terrain", {
-  skip_if_not_installed("marmap")
-
-  layers <- bathymetry_layers(mock_bathy())
-
-  expect_setequal(names(layers), c("DEPTH", "SLOPE", "ASPECT"))
-  expect_equal(terra::crs(layers, describe = TRUE)$code, "4326")
-
-  depth <- terra::values(layers[["DEPTH"]], na.rm = TRUE)
-  # marmap gives depth as negative elevation; the model wants a positive
-  # magnitude, matching the original's log(abs(bat)).
-  expect_true(all(depth > 0))
+test_that("bathymetry covariates come from datamatch", {
+  expect_identical(bathymetry_covariates(), datamatch::bathymetry_variables())
+  expect_setequal(names(bathymetry_covariates()), c("DEPTH", "SLOPE", "ASPECT"))
 })
 
-test_that("land is masked rather than becoming negative depth", {
-  skip_if_not_installed("marmap")
+test_that("study_area_bathymetry passes the configured area and cache path", {
+  config <- mock_config()
+  captured <- NULL
 
-  layers <- bathymetry_layers(mock_bathy())
-  depth <- terra::values(layers[["DEPTH"]])
+  # Intercept the delegate rather than hitting NOAA.
+  local_mocked_bindings(
+    fetch_bathymetry = function(bounding_box, resolution, path, keep = TRUE) {
+      captured <<- list(bounding_box = bounding_box, resolution = resolution,
+                        path = path)
+      "raster"
+    },
+    .package = "datamatch"
+  )
 
-  # The synthetic grid has a land strip, so some cells must be NA. Left
-  # unmasked they would be negative depths, which the model would read as
-  # very shallow water rather than as "not water".
-  expect_true(any(is.na(depth)))
-  expect_false(any(depth < 0, na.rm = TRUE))
-})
+  result <- study_area_bathymetry(config, resolution = 2)
 
-test_that("attach_bathymetry adds the requested layers at each point", {
-  skip_if_not_installed("marmap")
-
-  layers <- bathymetry_layers(mock_bathy())
-  dat <- data.frame(lon = c(-69.5, -67.5), lat = c(42.0, 42.5))
-
-  out <- attach_bathymetry(dat, layers, c("DEPTH", "SLOPE"))
-
-  expect_true(all(c("DEPTH", "SLOPE") %in% names(out)))
-  expect_equal(nrow(out), 2)
-  expect_false("ASPECT" %in% names(out))
-  # Depth increases offshore in the synthetic grid, so the eastern point is deeper.
-  expect_gt(out$DEPTH[2], out$DEPTH[1])
-})
-
-test_that("attach_bathymetry reports layers that are not available", {
-  skip_if_not_installed("marmap")
-
-  layers <- bathymetry_layers(mock_bathy())
-  dat <- data.frame(lon = -69, lat = 42)
-
-  expect_error(attach_bathymetry(dat, layers, "RUGOSITY"), "RUGOSITY")
-  expect_error(attach_bathymetry(dat, layers, "RUGOSITY"), "Available")
+  expect_equal(result, "raster")
+  expect_equal(captured$bounding_box$xmin, config$study_area$bbox$xmin)
+  expect_equal(captured$bounding_box$ymax, config$study_area$bbox$ymax)
+  expect_equal(captured$resolution, 2)
+  # Downloads belong with the rest of the run's outputs, not wherever R started.
+  expect_true(grepl(config$paths$output_dir, captured$path, fixed = TRUE))
 })
 
 test_that("bathymetry covariates appear in the reference table", {

@@ -33,7 +33,7 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
       grid <- covariate_grid(env_dat, year, month, config)
       if (is.null(grid)) next
       if (!is.null(bathy)) {
-        grid <- attach_bathymetry(grid, bathy, config$covariates$bathymetry)
+        grid <- datamatch::attach_bathymetry(grid, bathy, config$covariates$bathymetry)
       }
 
       predicted <- predict_grid(model, grid)
