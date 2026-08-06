@@ -108,6 +108,31 @@ chance. A smoke test that passed on noise would not be testing anything.
 
 ## Running on real data
 
+If you have the raw ECOMON export rather than a formatted database, build one
+first:
+
+```r
+formatted <- format_zoop_data("raw_ecomon.csv", write_to = "data/zooplankton.csv")
+zoop_taxa("raw_ecomon.csv")     # every taxon the file carries
+```
+
+It splits `DATE` into year, month and day, renames `LATITUDE`/`LONGITUDE`, and
+strips the units off each taxon column, so `CALANUS_FINMARCHICUS_10M2` becomes
+`CALANUS_FINMARCHICUS`. Some datasets resolve life stages, marked by a `C` and a
+Roman numeral. Those keep the stage (`CALANUS_FINMARCHICUS_CV`), which is the
+form `column_prefix` and `stages` match. A taxon without one is that taxon's
+total. Everything else in the file is carried through untouched, including the
+in-situ measurements it already holds, which are kept but not used as covariates.
+
+`species_catalog_from()` writes the matching `species.catalog`, giving each taxon
+whichever form its columns support:
+
+```r
+generate_config("my_run", zoop_file = "data/zooplankton.csv",
+                species = species_catalog_from("raw_ecomon.csv",
+                                               aliases = c(cfin = "CALANUS_FINMARCHICUS")))
+```
+
 The zooplankton database is not included and should not be committed (`data/` is
 gitignored). Point a config at your local copy of the CSV that
 [`original/create_database.R`](original/create_database.R) writes:
@@ -716,6 +741,7 @@ bathymetry/                        marmap's cached NOAA download, if used
 ```
 R/config.R              load_config(), generate_config()
 R/zoop_data.R           load_zoop_data(), label_patch(), available_stages()
+R/raw_data.R            format_zoop_data(), zoop_taxa(), split_dates()
 R/covariate_catalog.R   copernicus_covariates(), covariate_info()
 R/covariates.R          fetch_covariates(), attach_covariates(), covariate_grid()
 R/bathymetry.R          bathymetry_covariates(), the static seafloor layers
