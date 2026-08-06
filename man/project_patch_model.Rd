@@ -18,7 +18,8 @@ attached to every month since it does not vary in time}
 }
 \value{
 a tibble with \code{year}, \code{month}, \code{n_cells} (predicted), \code{n_grid} (cells
-available), \code{resolution} in degrees, and the \code{geotiff}/\code{png} paths written
+available), \code{resolution} in degrees, and the \code{geotiff}/\code{png} paths written.
+The suitability table's path is on it as a \code{table} attribute.
 }
 \description{
 Predicts patch probability across the covariate grid for every configured
@@ -39,5 +40,15 @@ Cells missing any predictor are dropped, and the count is reported per month
 along with the predictor most often responsible. That is usually a
 neighbourhood step, which is undefined on the study-area border, or a lag,
 which is undefined in the first month of the record.
+}
+
+\section{Getting the numbers out}{
+
+Each month is a GeoTIFF, which carries its own coordinates and is what a GIS
+wants. Alongside them goes one \code{suitability.csv} for the whole run, in long
+form: species, year, month, longitude, latitude, probability. That is the one
+to read into anything that is not a GIS, and it is written a month at a time
+rather than accumulated, since a decade of a real grid is tens of millions of
+rows. Set \code{projection.write_csv} to \code{false} to skip it.
 }
 

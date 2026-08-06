@@ -1288,7 +1288,9 @@ server <- function(input, output, session) {
                               ))),
         column(7, br(),
                downloadButton("download_projections",
-                              paste0("Download ", downloadable, " GeoTIFFs (.zip)")))
+                              paste0("Download ", downloadable, " GeoTIFFs (.zip)")),
+               downloadButton("download_suitability",
+                              "Download probabilities (.csv)"))
       )
     )
   })
@@ -1596,6 +1598,36 @@ server <- function(input, output, session) {
     req(run_result(), input$heatmap_covariate)
     plot_covariate_annual(run_result()$covariate_means, input$heatmap_covariate)
   })
+
+  # Every month in one long table: species, year, month, longitude, latitude,
+  # probability. The GeoTIFFs carry their coordinates for a GIS; this is the
+  # form for everything else, and it is read off disk rather than rebuilt so a
+  # large run is not held in memory to be downloaded.
+  output$download_suitability <- downloadHandler(
+    filename = function() {
+      paste0(run_result()$config$species$active, "_suitability_",
+             format(Sys.Date(), "%Y%m%d"), ".csv")
+    },
+    content = function(file) {
+      table <- attr(run_result()$projections, "table")
+      if (is.null(table) || !file.exists(table)) {
+        # projection.write_csv was off, so it is rebuilt from the rasters
+        # rather than refusing.
+        projections <- run_result()$projections
+        rows <- lapply(which(!is.na(projections$geotiff)), function(i) {
+          rast <- terra::rast(projections$geotiff[i])
+          frame <- as.data.frame(rast, xy = TRUE)
+          names(frame) <- c("lon", "lat", "suitability")
+          cbind(species = run_result()$config$species$active,
+                year = projections$year[i], month = projections$month[i],
+                frame)
+        })
+        readr::write_csv(dplyr::bind_rows(rows), file)
+        return(invisible(NULL))
+      }
+      file.copy(table, file, overwrite = TRUE)
+    }
+  )
 
   output$map <- leaflet::renderLeaflet({
     req(run_result(), input$projection)

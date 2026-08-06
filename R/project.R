@@ -23,8 +23,17 @@
 #' neighbourhood step, which is undefined on the study-area border, or a lag,
 #' which is undefined in the first month of the record.
 #'
+#' @section Getting the numbers out:
+#' Each month is a GeoTIFF, which carries its own coordinates and is what a GIS
+#' wants. Alongside them goes one `suitability.csv` for the whole run, in long
+#' form: species, year, month, longitude, latitude, probability. That is the one
+#' to read into anything that is not a GIS, and it is written a month at a time
+#' rather than accumulated, since a decade of a real grid is tens of millions of
+#' rows. Set `projection.write_csv` to `false` to skip it.
+#'
 #' @return a tibble with `year`, `month`, `n_cells` (predicted), `n_grid` (cells
-#'   available), `resolution` in degrees, and the `geotiff`/`png` paths written
+#'   available), `resolution` in degrees, and the `geotiff`/`png` paths written.
+#'   The suitability table's path is on it as a `table` attribute.
 #' @export
 project_patch_model <- function(model, env_dat, config, bathy = NULL) {
   proj_dir <- file.path(config$paths$output_dir, "projections")
@@ -47,6 +56,14 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
   message("  projecting onto a ", signif(resolution, 3), " degree grid (~",
           round(resolution * 111), " km), the grid the covariates were joined ",
           "onto")
+
+  # Written a month at a time rather than gathered and written at the end. A
+  # decade of a real grid is tens of millions of rows, which is fine on disk and
+  # not fine held in memory while the rest of the run finishes.
+  table_path <- file.path(proj_dir, "suitability.csv")
+  write_table <- !isFALSE(config$projection$write_csv)
+  if (write_table) unlink(table_path)
+  first_row <- TRUE
 
   results <- list()
   for (year in years) {
@@ -110,6 +127,21 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
         plot_projection(predicted, year, month, species, png_path)
       }
 
+      if (write_table) {
+        # Long rather than one column per month: a month is a value here, not a
+        # variable, and a wide table would have to be reshaped by anything
+        # reading it back.
+        rows <- data.frame(
+          species = species, year = year, month = month,
+          lon = predicted$lon, lat = predicted$lat,
+          suitability = predicted$suitability,
+          stringsAsFactors = FALSE
+        )
+        readr::write_csv(rows, table_path, append = !first_row,
+                         col_names = first_row)
+        first_row <- FALSE
+      }
+
       results[[length(results) + 1]] <- tibble::tibble(
         year = year, month = month, n_cells = nrow(predicted),
         n_grid = nrow(grid), resolution = resolution,
@@ -122,7 +154,12 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
     stop("No projections produced: the covariate data covers none of the configured ",
          "year/month combinations.", call. = FALSE)
   }
-  dplyr::bind_rows(results)
+  out <- dplyr::bind_rows(results)
+  if (write_table && file.exists(table_path)) {
+    message("  suitability table written to ", table_path)
+    attr(out, "table") <- table_path
+  }
+  out
 }
 
 #' Predict patch probability across a covariate grid

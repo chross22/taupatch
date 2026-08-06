@@ -165,3 +165,48 @@ test_that("detail lines do not move the bar", {
   expect_null(match_pipeline_stage("  ROC AUC: 0.8734"))
   expect_null(match_pipeline_stage("  threshold: 9315.31"))
 })
+
+test_that("a run writes the probabilities as a long table", {
+  skip_on_cran()
+  config <- mock_config()
+  config$model$trees <- 50
+  config$model$cv_folds <- 3
+  config$projection$years <- c(2018, 2019)
+  config$projection$months <- c(6, 7)
+  config$projection$write_png <- FALSE
+  generate_mock_zoop_data(config)
+
+  result <- suppressMessages(suppressWarnings(run_taupatch(config)))
+  table <- attr(result$projections, "table")
+
+  expect_true(!is.null(table) && file.exists(table))
+  rows <- readr::read_csv(table, show_col_types = FALSE, progress = FALSE)
+
+  # Coordinates and time on every row, which is the point: a GeoTIFF carries
+  # its coordinates and says nothing about which month it is.
+  expect_setequal(names(rows),
+                  c("species", "year", "month", "lon", "lat", "suitability"))
+  expect_setequal(unique(paste(rows$year, rows$month)),
+                  c("2018 6", "2018 7", "2019 6", "2019 7"))
+  expect_true(all(rows$suitability >= 0 & rows$suitability <= 1))
+  # Long, not wide: one row per cell per month.
+  expect_equal(nrow(rows), sum(result$projections$n_cells))
+})
+
+test_that("the probability table can be turned off", {
+  skip_on_cran()
+  config <- mock_config()
+  config$model$trees <- 50
+  config$model$cv_folds <- 3
+  config$projection$years <- c(2018, 2018)
+  config$projection$months <- c(6, 6)
+  config$projection$write_png <- FALSE
+  config$projection$write_csv <- FALSE
+  generate_mock_zoop_data(config)
+
+  result <- suppressMessages(suppressWarnings(run_taupatch(config)))
+
+  expect_null(attr(result$projections, "table"))
+  expect_false(file.exists(file.path(config$paths$output_dir, "projections",
+                                     "suitability.csv")))
+})

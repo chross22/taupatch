@@ -729,6 +729,7 @@ diagnostics/partial_effects.png    what each predictor does to patch probability
 diagnostics/coefficients.png       glm only: signed effects with intervals
 diagnostics/smooth_terms.csv       gam only: effective degrees of freedom per smooth
 diagnostics/gam_smooths.png        gam only, with fancygam: fitted smooths with error bands
+projections/suitability.csv       every cell of every month: species, year, month, lon, lat, probability
 projections/<species>_<year>_<month>.tif
 plots/<species>_<year>_<month>.png
 covariates/monthly_means.csv       study-area mean per covariate, month, and year
