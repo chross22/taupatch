@@ -126,10 +126,18 @@ covariates:
     #   levels: [50, 100, 200] # isobath_dist_50/100/200; reads DEPTH above
     # - distance_to_shore      # shore_dist, km; the original pipeline's dist
   # The original log-transformed both chlorophyll and bathymetry; both span
-  # orders of magnitude across the shelf.
-  log_transform:
-    - CHL
-    - DEPTH
+  # orders of magnitude across the shelf. Each covariate takes at most one
+  # transform. Run taupatch::covariate_transforms() for the full list and what
+  # each one can safely be given - in particular, the log/sqrt family takes
+  # abs(x) first, which is right for depth (stored negative) and wrong for a
+  # signed covariate like a gradient, where yeojohnson is the one to use.
+  transform:
+    log1p:
+      - CHL
+      - DEPTH
+  # Centring and scaling. Costs a random forest nothing and matters to every
+  # other engine, so it stays on unless a run has a reason.
+  normalize: true
   # Days fetched in parallel. Modest values only - the bottleneck is the
   # Copernicus API, not local CPU.
   n_workers: 4

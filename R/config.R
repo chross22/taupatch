@@ -98,10 +98,15 @@ apply_config_defaults <- function(config) {
   config$projection$years <- config$projection$years %||% config$dates$years
   config$projection$months <- config$projection$months %||% config$dates$months
   config$covariates <- modifyList(
-    list(source = "copernicus", derived = "jday", derivoce = list(),
-         log_transform = character()),
+    list(source = "copernicus", derived = "jday",
+         transform = list(), normalize = TRUE, log_transform = character()),
     config$covariates %||% list()
   )
+  # Not a modifyList default. It recurses when both sides are lists and merges
+  # by name, and a derivoce block is an *unnamed* sequence of steps - so the
+  # recursion finds no names to merge and yields the empty default back,
+  # erasing the block the config actually asked for.
+  config$covariates$derivoce <- config$covariates$derivoce %||% list()
   config
 }
 
@@ -277,14 +282,8 @@ validate_covariates <- function(config) {
   }
 
   validate_derivoce(config)
-
-  log_unknown <- setdiff(config$covariates$log_transform,
-                         c(selected, bathymetry, config$covariates$derived,
-                           derivoce_names(config)))
-  if (length(log_unknown) > 0) {
-    stop("covariates.log_transform names covariates that are not selected: ",
-         paste(log_unknown, collapse = ", "), call. = FALSE)
-  }
+  validate_transforms(config, c(selected, bathymetry, config$covariates$derived,
+                                derivoce_names(config)))
   if (source == "local_netcdf" && is.null(config$paths$covariate_dir)) {
     stop("covariates.source is 'local_netcdf' but paths.covariate_dir is not set.",
          call. = FALSE)
@@ -361,8 +360,19 @@ validate_columns <- function(config) {
 #' Write a taupatch run config
 #'
 #' Defaults reproduce a working ECOMON run over the Northeast US shelf, so a new
-#' config is normally one call with a species name. The default bounding box
-#' matches the extent the original pipeline cropped its projections to.
+#' config is normally one call with a name. The default bounding box matches the
+#' extent the original pipeline cropped its projections to
+#' (`original/load_covars.R:147`).
+#'
+#' Covariates are named the way the rest of the package names them — `SST`, not
+#' `thetao` on `cmems_mod_glo_phy_my_0.083deg_P1M-m` — so a generated config reads
+#' like the shipped example and can be edited without consulting the Copernicus
+#' catalog. `covariate_info()` lists the names; the raw `covariates.copernicus`
+#' block is still accepted by hand for a dataset the catalog does not cover.
+#'
+#' The file is loaded back and validated before the path is returned, so a
+#' mistyped covariate or transform is an error now rather than five minutes into
+#' a run.
 #'
 #' @param name config name; the file is written to `<dir>/<name>.yaml`
 #' @param zoop_file path to the zooplankton database CSV
@@ -373,15 +383,27 @@ validate_columns <- function(config) {
 #' @param years two-element `c(start, end)` year range
 #' @param months two-element `c(start, end)` month range
 #' @param bbox named list with `xmin`/`xmax`/`ymin`/`ymax`
-#' @param dataset_filter values of the `dataset` column to keep; `NULL` keeps all
 #' @param covariate_source one of `"copernicus"`, `"local_netcdf"`, `"mock"`
-#' @param copernicus_datasets list of Copernicus product/dataset/variable specs
+#' @param selected time-varying covariate names; see [copernicus_covariates()]
+#' @param bathymetry static seafloor covariate names; see [bathymetry_covariates()]
 #' @param derivoce list of derived-covariate steps; see [derivoce_covariates()]
-#' @param log_transform covariate columns to log-transform in the recipe
-#' @param cv_folds number of cross-validation folds
+#' @param transform named list of transform to covariate names; see
+#'   [covariate_transforms()]
+#' @param normalize whether to center and scale the predictors
+#' @param engine the parsnip engine to fit with
 #' @param trees number of trees in the random forest
+#' @param cv_folds number of cross-validation folds
 #' @param dir directory to write the config into
 #' @return the path written, invisibly
+#' @examples
+#' \dontrun{
+#' generate_config("cfin_gom")
+#' generate_config("ctyp_shelf", active_species = "ctyp",
+#'                 selected = c("SST", "SSS", "CHL"),
+#'                 transform = list(fourth_root = "CHL"))
+#' }
+#' @seealso [covariate_info()] for the covariate names, [load_config()] to read
+#'   the result back
 #' @export
 generate_config <- function(name,
                             zoop_file = "data/zooplankton_database.csv",
@@ -390,34 +412,100 @@ generate_config <- function(name,
                             active_species = "cfin",
                             years = c(2003, 2017),
                             months = c(1, 12),
-                            bbox = list(xmin = -71, xmax = -65, ymin = 40, ymax = 45),
-                            dataset_filter = "ECOMON",
+                            bbox = list(xmin = -76, xmax = -65, ymin = 35, ymax = 45),
                             covariate_source = "copernicus",
-                            copernicus_datasets = default_copernicus_datasets(),
+                            selected = c("SST", "SSS", "BOTT", "MLD", "CHL"),
+                            bathymetry = c("DEPTH", "SLOPE"),
                             derivoce = list(),
-                            log_transform = character(),
-                            cv_folds = 10,
+                            transform = list(log1p = c("CHL", "DEPTH")),
+                            normalize = TRUE,
+                            engine = "ranger",
                             trees = 500,
+                            cv_folds = 10,
                             dir = "inst/configs") {
+  covariates <- list(source = covariate_source, selected = as.character(selected))
+  # Omitted rather than written empty, so the generated file shows only the
+  # blocks the run actually uses.
+  if (length(bathymetry) > 0) covariates$bathymetry <- as.character(bathymetry)
+  covariates$derived <- "jday"
+  if (length(derivoce) > 0) covariates$derivoce <- derivoce
+  if (length(transform) > 0) covariates$transform <- transform
+  covariates$normalize <- normalize
+
   config <- list(
     paths = list(project_dir = ".", zoop_file = zoop_file, output_dir = output_dir),
     columns = list(lat = "lat", lon = "lon", year = "year", month = "month",
-                   day = "day", dataset = "dataset", dataset_filter = dataset_filter),
+                   day = "day"),
     species = list(active = active_species, catalog = species),
-    dates = list(years = years, months = months),
+    # Counts are written as integers so the file reads `2003` rather than
+    # `2003.0`; a config is meant to be edited by hand after this.
+    dates = list(years = as.integer(years), months = as.integer(months)),
     study_area = list(bbox = bbox),
-    covariates = list(source = covariate_source, copernicus = copernicus_datasets,
-                      derived = "jday", derivoce = derivoce,
-                      log_transform = log_transform),
-    model = list(engine = "ranger", trees = trees, cv_folds = cv_folds,
-                 tune = FALSE, seed = 42),
+    covariates = covariates,
+    model = list(engine = engine, trees = as.integer(trees),
+                 cv_folds = as.integer(cv_folds), tune = FALSE, seed = 42L),
     projection = list(write_geotiff = TRUE, write_png = TRUE, overwrite = TRUE)
   )
 
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   out_path <- file.path(dir, paste0(name, ".yaml"))
-  yaml::write_yaml(config, out_path)
+  writeLines(c(config_header(name), write_config_yaml(config)), out_path)
+
+  # A config that does not load is worse than none: it sits on disk looking
+  # usable. Removed before the error surfaces, so a failed call leaves nothing.
+  tryCatch(load_config(out_path), error = function(e) {
+    unlink(out_path)
+    stop(conditionMessage(e), call. = FALSE)
+  })
   invisible(out_path)
+}
+
+#' Serialize a config to YAML
+#'
+#' `yaml::as.yaml()` writes logicals as `yes`/`no`. That is valid YAML 1.1 and
+#' round-trips correctly, but every config in this package is written `true` /
+#' `false`, and a generated file that does not look like the hand-written ones is
+#' half the reason the generator was worth avoiding.
+#'
+#' @param config a config list
+#' @return a YAML string
+#' @keywords internal
+write_config_yaml <- function(config) {
+  yaml::as.yaml(config, handlers = list(
+    logical = function(x) {
+      out <- ifelse(x, "true", "false")
+      class(out) <- "verbatim"
+      out
+    }
+  ))
+}
+
+#' Header comments for a generated config
+#'
+#' `yaml::write_yaml()` writes no comments, and an uncommented config gives a
+#' reader no way in. This is not the shipped example's per-field commentary, but
+#' it does say what the file is and which functions list the values its fields
+#' accept.
+#'
+#' @param name the config's name
+#' @return a character vector of comment lines
+#' @keywords internal
+config_header <- function(name) {
+  c(
+    paste0("# taupatch run config: ", name),
+    paste0("# Written by taupatch::generate_config() on ", Sys.Date(), "."),
+    "#",
+    "# Every field can be edited by hand. To see what the covariate fields",
+    "# accept:",
+    "#",
+    "#   taupatch::covariate_info()          # selected, bathymetry",
+    "#   taupatch::derivoce_covariates()     # derivoce",
+    "#   taupatch::covariate_transforms()    # transform",
+    "#   taupatch::available_stages(file, species)   # species.catalog.*.stages",
+    "#",
+    "# inst/configs/cfin_gom.yaml is the same thing with every field explained.",
+    ""
+  )
 }
 
 #' Default species catalog

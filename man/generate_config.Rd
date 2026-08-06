@@ -12,14 +12,16 @@ generate_config(
   active_species = "cfin",
   years = c(2003, 2017),
   months = c(1, 12),
-  bbox = list(xmin = -71, xmax = -65, ymin = 40, ymax = 45),
-  dataset_filter = "ECOMON",
+  bbox = list(xmin = -76, xmax = -65, ymin = 35, ymax = 45),
   covariate_source = "copernicus",
-  copernicus_datasets = default_copernicus_datasets(),
+  selected = c("SST", "SSS", "BOTT", "MLD", "CHL"),
+  bathymetry = c("DEPTH", "SLOPE"),
   derivoce = list(),
-  log_transform = character(),
-  cv_folds = 10,
+  transform = list(log1p = c("CHL", "DEPTH")),
+  normalize = TRUE,
+  engine = "ranger",
   trees = 500,
+  cv_folds = 10,
   dir = "inst/configs"
 )
 }
@@ -41,19 +43,24 @@ the original database (\code{cfin}, \code{ctyp}, \code{pseudo}) at the 90th perc
 
 \item{bbox}{named list with \code{xmin}/\code{xmax}/\code{ymin}/\code{ymax}}
 
-\item{dataset_filter}{values of the \code{dataset} column to keep; \code{NULL} keeps all}
-
 \item{covariate_source}{one of \code{"copernicus"}, \code{"local_netcdf"}, \code{"mock"}}
 
-\item{copernicus_datasets}{list of Copernicus product/dataset/variable specs}
+\item{selected}{time-varying covariate names; see \code{\link[=copernicus_covariates]{copernicus_covariates()}}}
+
+\item{bathymetry}{static seafloor covariate names; see \code{\link[=bathymetry_covariates]{bathymetry_covariates()}}}
 
 \item{derivoce}{list of derived-covariate steps; see \code{\link[=derivoce_covariates]{derivoce_covariates()}}}
 
-\item{log_transform}{covariate columns to log-transform in the recipe}
+\item{transform}{named list of transform to covariate names; see
+\code{\link[=covariate_transforms]{covariate_transforms()}}}
 
-\item{cv_folds}{number of cross-validation folds}
+\item{normalize}{whether to center and scale the predictors}
+
+\item{engine}{the parsnip engine to fit with}
 
 \item{trees}{number of trees in the random forest}
+
+\item{cv_folds}{number of cross-validation folds}
 
 \item{dir}{directory to write the config into}
 }
@@ -62,6 +69,30 @@ the path written, invisibly
 }
 \description{
 Defaults reproduce a working ECOMON run over the Northeast US shelf, so a new
-config is normally one call with a species name. The default bounding box
-matches the extent the original pipeline cropped its projections to.
+config is normally one call with a name. The default bounding box matches the
+extent the original pipeline cropped its projections to
+(\code{original/load_covars.R:147}).
+}
+\details{
+Covariates are named the way the rest of the package names them — \code{SST}, not
+\code{thetao} on \code{cmems_mod_glo_phy_my_0.083deg_P1M-m} — so a generated config reads
+like the shipped example and can be edited without consulting the Copernicus
+catalog. \code{covariate_info()} lists the names; the raw \code{covariates.copernicus}
+block is still accepted by hand for a dataset the catalog does not cover.
+
+The file is loaded back and validated before the path is returned, so a
+mistyped covariate or transform is an error now rather than five minutes into
+a run.
+}
+\examples{
+\dontrun{
+generate_config("cfin_gom")
+generate_config("ctyp_shelf", active_species = "ctyp",
+                selected = c("SST", "SSS", "CHL"),
+                transform = list(fourth_root = "CHL"))
+}
+}
+\seealso{
+\code{\link[=covariate_info]{covariate_info()}} for the covariate names, \code{\link[=load_config]{load_config()}} to read
+the result back
 }

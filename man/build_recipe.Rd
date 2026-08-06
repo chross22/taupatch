@@ -15,16 +15,22 @@ build_recipe(model_data, config)
 a \code{recipes::recipe}
 }
 \description{
-Log-transforms the covariates named in \code{covariates.log_transform}, then
-normalizes all numeric predictors. The original applied \code{log(abs(x))} to a
-hardcoded trio of chlorophyll, integrated chlorophyll, and bathymetry
-(\code{original/buildZoopModel.R:134-136}); which covariates need it is now config.
+Applies the transformations named in \code{covariates.transform}, then normalizes
+all numeric predictors unless \code{covariates.normalize} turns that off. The
+original applied \code{log(abs(x))} to a hardcoded trio of chlorophyll, integrated
+chlorophyll, and bathymetry (\code{original/buildZoopModel.R:134-136}); which
+covariates need which transform is now config. See \code{\link[=covariate_transforms]{covariate_transforms()}}
+for what is available and what each one can safely be given.
 }
 \details{
-The transform is \code{log1p(abs(x))} rather than \code{step_log()}. It preserves the
-original's \code{abs()}, which exists because bathymetry is stored as negative
-depth, while remaining defined at zero — \code{step_log(signed = TRUE)} returns
-\code{-Inf} at zero and silently ignores an \code{offset} meant to prevent that, and
-zeros are common in these covariates.
+The default transform remains \code{log1p(abs(x))} rather than \code{step_log()}. It
+preserves the original's \code{abs()}, which exists because bathymetry is stored as
+negative depth, while remaining defined at zero — \code{step_log(signed = TRUE)}
+returns \code{-Inf} at zero and silently ignores an \code{offset} meant to prevent that,
+and zeros are common in these covariates.
+
+Normalizing costs a tree model nothing and matters to everything else, so it
+stays on by default and is a knob rather than a decision the engine choice
+makes silently.
 }
 \keyword{internal}

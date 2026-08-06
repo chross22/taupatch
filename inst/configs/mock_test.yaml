@@ -54,7 +54,8 @@ covariates:
     - SSS
   derived:
     - jday
-  log_transform: []
+  transform: {}
+  normalize: true
 
 model:
   engine: ranger

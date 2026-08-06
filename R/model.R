@@ -197,16 +197,22 @@ optimal_threshold <- function(predictions) {
 
 #' Build the preprocessing recipe
 #'
-#' Log-transforms the covariates named in `covariates.log_transform`, then
-#' normalizes all numeric predictors. The original applied `log(abs(x))` to a
-#' hardcoded trio of chlorophyll, integrated chlorophyll, and bathymetry
-#' (`original/buildZoopModel.R:134-136`); which covariates need it is now config.
+#' Applies the transformations named in `covariates.transform`, then normalizes
+#' all numeric predictors unless `covariates.normalize` turns that off. The
+#' original applied `log(abs(x))` to a hardcoded trio of chlorophyll, integrated
+#' chlorophyll, and bathymetry (`original/buildZoopModel.R:134-136`); which
+#' covariates need which transform is now config. See [covariate_transforms()]
+#' for what is available and what each one can safely be given.
 #'
-#' The transform is `log1p(abs(x))` rather than `step_log()`. It preserves the
-#' original's `abs()`, which exists because bathymetry is stored as negative
-#' depth, while remaining defined at zero — `step_log(signed = TRUE)` returns
-#' `-Inf` at zero and silently ignores an `offset` meant to prevent that, and
-#' zeros are common in these covariates.
+#' The default transform remains `log1p(abs(x))` rather than `step_log()`. It
+#' preserves the original's `abs()`, which exists because bathymetry is stored as
+#' negative depth, while remaining defined at zero — `step_log(signed = TRUE)`
+#' returns `-Inf` at zero and silently ignores an `offset` meant to prevent that,
+#' and zeros are common in these covariates.
+#'
+#' Normalizing costs a tree model nothing and matters to everything else, so it
+#' stays on by default and is a knob rather than a decision the engine choice
+#' makes silently.
 #'
 #' @param model_data data frame of predictors plus the `patch` response
 #' @param config a config list, as returned by `load_config()`
@@ -215,15 +221,53 @@ optimal_threshold <- function(predictions) {
 build_recipe <- function(model_data, config) {
   rec <- recipes::recipe(patch ~ ., data = model_data)
 
-  log_vars <- intersect(config$covariates$log_transform, names(model_data))
-  if (length(log_vars) > 0) {
-    rec <- recipes::step_mutate_at(rec, dplyr::all_of(log_vars),
-                                    fn = function(x) log1p(abs(x)))
+  catalog <- covariate_transforms()
+  spec <- covariate_transform_spec(config)
+  for (name in names(spec)) {
+    vars <- intersect(spec[[name]], names(model_data))
+    if (length(vars) == 0) next
+
+    entry <- catalog[[name]]
+    for (covariate in vars) {
+      check_transform_input(model_data[[covariate]], covariate, name, entry)
+    }
+    rec <- add_transform_step(rec, vars, entry)
   }
 
-  rec |>
-    recipes::step_normalize(recipes::all_numeric_predictors()) |>
-    recipes::step_naomit(recipes::all_predictors(), skip = TRUE)
+  if (!isFALSE(config$covariates$normalize)) {
+    rec <- recipes::step_normalize(rec, recipes::all_numeric_predictors())
+  }
+  recipes::step_naomit(rec, recipes::all_predictors(), skip = TRUE)
+}
+
+#' Add one transformation step to a recipe
+#'
+#' A function rather than inline code because `recipes` captures its selection as
+#' an unevaluated quosure. Adding the steps directly inside a loop leaves every
+#' one of them pointing at the same `vars` binding, which by the time `prep()`
+#' runs holds the last iteration's value — so a config asking for `log10` on
+#' chlorophyll and `sqrt` on temperature silently applies both to temperature and
+#' neither to chlorophyll. Each call here gets its own frame, so each step's
+#' quosure resolves to the variables it was built for.
+#'
+#' The `force()` is the load-bearing half. Without it `vars` is still an unforced
+#' promise pointing back at the caller's loop variable, so moving the call into a
+#' function changes nothing: the quosure captures this frame, the promise is
+#' evaluated at `prep()` time, and it reads the loop variable's final value.
+#'
+#' @param rec a `recipes::recipe`
+#' @param vars covariate names the transform applies to
+#' @param entry the matching [covariate_transforms()] entry
+#' @return `rec` with the step appended
+#' @keywords internal
+add_transform_step <- function(rec, vars, entry) {
+  force(vars)
+  force(entry)
+
+  if (is.null(entry$step)) {
+    return(recipes::step_mutate_at(rec, dplyr::all_of(vars), fn = entry$fn))
+  }
+  entry$step(rec, vars)
 }
 
 #' Build the model specification

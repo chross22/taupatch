@@ -87,8 +87,15 @@ ECOMON stations with monthly Copernicus physical covariates. Generate new config
 programmatically rather than hand-editing YAML:
 
 ```r
-generate_config("cfin_gom", active_species = "cfin", years = c(2005, 2015))
+generate_config("ctyp_shelf", active_species = "ctyp", years = c(2005, 2015),
+                selected = c("SST", "SSS", "CHL"),
+                transform = list(fourth_root = "CHL"))
 ```
+
+Covariates are named the way the rest of the package names them, the file leads
+with comments saying where those names come from, and it is loaded back and
+validated before the path is returned — so a mistyped covariate is an error at
+that call rather than five minutes into a run.
 
 ## Configuration
 
@@ -160,7 +167,8 @@ request:
 covariates:
   selected: [SST, SSS, BOTT, MLD, CHL]
   derived: [jday]
-  log_transform: [CHL]
+  transform:
+    log1p: [CHL]
 ```
 
 ```r
@@ -193,7 +201,8 @@ Copernicus:
 covariates:
   selected: [SST, SSS, CHL]     # Copernicus, time-varying
   bathymetry: [DEPTH, SLOPE]    # NOAA ETOPO, static
-  log_transform: [CHL, DEPTH]
+  transform:
+    log1p: [CHL, DEPTH]
 ```
 
 These replace the SRTM30 depth/slope layers the original used.
@@ -237,7 +246,7 @@ These are computed **on the covariate grid, before stations are matched to it** 
 a gradient or a front is a property of the field, and scattered station points
 cannot recover one. After that they are ordinary covariate columns: matched to
 stations, carried onto the projection grid, and picked up as predictors
-automatically. `covariates.log_transform` can name them.
+automatically, and `covariates.transform` can name them.
 
 Three things cost data, and a run says so when they happen:
 
@@ -247,6 +256,42 @@ Three things cost data, and a run says so when they happen:
   the edge of the study area, so its border is lost from both the training
   stations and the maps. Draw the bounding box wider than the stations.
 - A neighbourhood step reading an upsampled variable warns, for the reason below.
+
+### Transformations
+
+Each covariate takes at most one transform, named under `covariates.transform`:
+
+```yaml
+covariates:
+  transform:
+    log1p: [CHL, DEPTH]     # log(1 + |x|) - the default, defined at zero
+    fourth_root: [NO3]
+    yeojohnson: [SST_tgrad]
+  normalize: true           # centre and scale; on unless turned off
+```
+
+| Name | What it is |
+|---|---|
+| `log1p` | `log(1 + \|x\|)`. Defined at zero, which the plain logs are not |
+| `log` / `log10` | Natural and base-10 log of the magnitude |
+| `sqrt` / `fourth_root` | Milder compression, defined at zero; fourth root is the plankton standard |
+| `boxcox` | Estimates the best power per covariate; needs strictly positive input |
+| `yeojohnson` | Box-Cox extended to zero and negative values |
+
+Two rules the package enforces against the data rather than trusting:
+
+- **`log` and `log10` are undefined at zero**, and zeros are ordinary in
+  chlorophyll and in any derived integral that starts there. Asking for one on a
+  column containing zeros is an error pointing at `log1p`.
+- **The log and root family takes `abs(x)` first.** That is right for a magnitude
+  stored with a sign convention — depth is negative — and wrong for a genuinely
+  signed covariate, where it maps `-2` and `2` onto the same predictor. Derived
+  covariates make this common: temporal gradients, vertical gradients, and
+  current components are all signed. Those columns warn, and `yeojohnson` is the
+  transform that handles them properly.
+
+`covariate_transforms()` lists all of them. `covariates.log_transform` still works
+and still means `log1p`.
 
 ### Combining products of different resolution
 

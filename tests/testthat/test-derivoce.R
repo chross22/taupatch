@@ -212,6 +212,29 @@ test_that("derived covariates reach the model and the projection grid", {
   expect_true(all(result$model$predictors %in% names(grid)))
 })
 
+test_that("a derivoce block survives being read from a config file", {
+  # Every other test here sets covariates$derivoce on an already-loaded config,
+  # which skips apply_config_defaults(). It should not: modifyList() recurses
+  # when both sides are lists and merges them by name, and a derivoce block is
+  # an unnamed sequence of steps - so the default list() came back out and the
+  # configured steps were silently dropped on load.
+  path <- system.file("configs", "cfin_gom.yaml", package = "taupatch")
+  if (!nzchar(path)) path <- test_path("..", "..", "inst", "configs", "cfin_gom.yaml")
+  config <- load_config(path)
+
+  expect_gt(length(config$covariates$derivoce), 0)
+  expect_true(all(c("SST_grad", "CHL_lag1") %in% derivoce_names(config)))
+
+  # And the same through a config the generator wrote.
+  dir <- tempfile("configs"); dir.create(dir)
+  generated <- generate_config(
+    "roundtrip", dir = dir, zoop_file = "data/absent.csv",
+    selected = c("SST", "BOTT"), bathymetry = character(), transform = list(),
+    derivoce = list(list(type = "lag_covariate", vars = "SST", n = 2))
+  )
+  expect_equal(derivoce_names(load_config(generated)), "SST_lag2")
+})
+
 test_that("a run with no derivoce block is untouched", {
   config <- mock_config()
 
