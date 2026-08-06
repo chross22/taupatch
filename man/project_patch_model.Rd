@@ -50,5 +50,9 @@ form: species, year, month, longitude, latitude, probability. That is the one
 to read into anything that is not a GIS, and it is written a month at a time
 rather than accumulated, since a decade of a real grid is tens of millions of
 rows. Set \code{projection.write_csv} to \code{false} to skip it.
+
+Setting \code{projection.write_grd} to \code{true} also writes one multi-layer raster
+holding every month, layer names carrying the dates. See
+\code{\link[=write_suitability_stack]{write_suitability_stack()}}.
 }
 

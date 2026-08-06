@@ -31,6 +31,10 @@
 #' rather than accumulated, since a decade of a real grid is tens of millions of
 #' rows. Set `projection.write_csv` to `false` to skip it.
 #'
+#' Setting `projection.write_grd` to `true` also writes one multi-layer raster
+#' holding every month, layer names carrying the dates. See
+#' [write_suitability_stack()].
+#'
 #' @return a tibble with `year`, `month`, `n_cells` (predicted), `n_grid` (cells
 #'   available), `resolution` in degrees, and the `geotiff`/`png` paths written.
 #'   The suitability table's path is on it as a `table` attribute.
@@ -159,6 +163,23 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
     message("  suitability table written to ", table_path)
     attr(out, "table") <- table_path
   }
+
+  # Off by default: it is the same numbers as the GeoTIFFs in another container,
+  # and writing both on every run doubles the output for a format most runs do
+  # not need.
+  if (isTRUE(config$projection$write_grd)) {
+    stack_path <- file.path(proj_dir, "suitability.grd")
+    written <- tryCatch(write_suitability_stack(out, stack_path),
+                        error = function(e) {
+                          warning("Could not write the raster stack: ",
+                                  conditionMessage(e), call. = FALSE)
+                          NULL
+                        })
+    if (!is.null(written)) {
+      message("  raster stack written to ", stack_path)
+      attr(out, "stack") <- stack_path
+    }
+  }
   out
 }
 
@@ -182,4 +203,57 @@ predict_grid <- function(model, grid) {
     lat = complete$lat,
     suitability = probs$.pred_patch
   )
+}
+
+#' Write the monthly projections as one multi-layer raster
+#'
+#' The per-month GeoTIFFs are one file each, which is what a GIS wants and
+#' awkward for anything that treats time as a dimension: a decade is a hundred
+#' and eighty files whose only record of which month they are is the filename.
+#' This stacks them into a single raster with one layer per month, named for it.
+#'
+#' Built from the files rather than from rasters held in memory. `terra` reads a
+#' stack lazily, so a decade of a real grid is streamed from disk to disk instead
+#' of being assembled in one piece first.
+#'
+#' @section Why .grd:
+#' It is `raster`'s native format and `terra` writes it, it keeps layer names -
+#' which is the whole point here, since the names carry the dates - and it has no
+#' band limit. GeoTIFF can hold the layers but not their names, so a stacked
+#' `.tif` would come back as `suitability_1` through `suitability_180`. Note that
+#' it is two files: a `.grd` header and a `.gri` of data, and one is no use
+#' without the other.
+#'
+#' One wrinkle worth knowing. `terra` writes a `.grd` header without recording
+#' each layer's range, so `terra::minmax()` on the result reports a placeholder
+#' of some 1e38 rather than the 0 to 1 a probability actually spans. The values
+#' are correct - they match the GeoTIFFs cell for cell - and
+#' `terra::global(stack, range, na.rm = TRUE)` gives the real range. Only a
+#' reader that trusts the header, such as an automatic colour scale, is misled,
+#' and setting the range yourself is the fix there.
+#'
+#' @param projections the tibble [project_patch_model()] returns
+#' @param path where to write the `.grd`
+#' @return `path`, invisibly
+#' @examples
+#' \dontrun{
+#' write_suitability_stack(result$projections, "suitability.grd")
+#' }
+#' @export
+write_suitability_stack <- function(projections, path) {
+  available <- projections[!is.na(projections$geotiff) &
+                             file.exists(projections$geotiff), ]
+  if (nrow(available) == 0) {
+    stop("No GeoTIFFs to stack. A run with projection.write_geotiff set to ",
+         "false has nothing to build this from.", call. = FALSE)
+  }
+
+  stack <- terra::rast(available$geotiff)
+  # The dates are the reason for stacking, so they have to survive as names.
+  names(stack) <- sprintf("%d_%02d", available$year, available$month)
+  terra::time(stack) <- as.Date(sprintf("%d-%02d-15", available$year,
+                                        available$month))
+
+  terra::writeRaster(stack, path, overwrite = TRUE)
+  invisible(path)
 }

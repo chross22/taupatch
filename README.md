@@ -730,6 +730,7 @@ diagnostics/coefficients.png       glm only: signed effects with intervals
 diagnostics/smooth_terms.csv       gam only: effective degrees of freedom per smooth
 diagnostics/gam_smooths.png        gam only, with fancygam: fitted smooths with error bands
 projections/suitability.csv       every cell of every month: species, year, month, lon, lat, probability
+projections/suitability.grd       the same, as one raster with a layer per month (projection.write_grd)
 projections/<species>_<year>_<month>.tif
 plots/<species>_<year>_<month>.png
 covariates/monthly_means.csv       study-area mean per covariate, month, and year

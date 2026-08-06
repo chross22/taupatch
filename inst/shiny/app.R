@@ -31,6 +31,19 @@ format_percent <- function(x) format(round(x, 1), trim = TRUE, drop0trailing = T
 # load_all(), the usual way to iterate on the app without reinstalling. Without
 # the fallback every base_config$... is NULL and the first sliderInput() fails
 # with a message that says nothing about the real cause.
+# Resolved here rather than only in run_taupatch_app(), because the app is also
+# launched by pointing shiny at this directory, and because the launcher's
+# search can be the thing that misses. copernicus_client() looks past PATH into
+# the usual conda locations, which is the case that matters: an R session
+# started from RStudio has the user's conda install on their PATH and not on
+# R's, and a parallel worker spawned from it has less environment still.
+local({
+  client <- taupatch::copernicus_client()
+  if (nzchar(client)) {
+    options(datamatch.copernicusmarine = client)
+  }
+})
+
 base_config <- getOption("taupatch.app_config")
 if (is.null(base_config)) {
   fallback <- system.file("configs", "mock_test.yaml", package = "taupatch")
@@ -1290,7 +1303,9 @@ server <- function(input, output, session) {
                downloadButton("download_projections",
                               paste0("Download ", downloadable, " GeoTIFFs (.zip)")),
                downloadButton("download_suitability",
-                              "Download probabilities (.csv)"))
+                              "Download probabilities (.csv)"),
+               downloadButton("download_stack",
+                              "Download raster stack (.grd)"))
       )
     )
   })
@@ -1626,6 +1641,35 @@ server <- function(input, output, session) {
         return(invisible(NULL))
       }
       file.copy(table, file, overwrite = TRUE)
+    }
+  )
+
+  # Zipped, because a .grd is two files - the header and the .gri holding the
+  # data - and either one alone is unreadable.
+  output$download_stack <- downloadHandler(
+    filename = function() {
+      paste0(run_result()$config$species$active, "_suitability_",
+             format(Sys.Date(), "%Y%m%d"), "_grd.zip")
+    },
+    contentType = "application/zip",
+    content = function(file) {
+      folder <- paste0(run_result()$config$species$resolved$name, "_stack")
+      staging <- file.path(tempdir(), "taupatch_stack")
+      unlink(staging, recursive = TRUE)
+      dir.create(file.path(staging, folder), recursive = TRUE,
+                 showWarnings = FALSE)
+
+      # Built on demand rather than depending on the run having been configured
+      # to write one.
+      write_suitability_stack(run_result()$projections,
+                              file.path(staging, folder, "suitability.grd"))
+
+      # Same reason as the GeoTIFF download: zip() stores paths as given, so it
+      # runs from the staging directory to avoid burying the archive under the
+      # full temp path.
+      old <- setwd(staging)
+      on.exit(setwd(old), add = TRUE)
+      utils::zip(file, folder, flags = "-r9Xq")
     }
   )
 

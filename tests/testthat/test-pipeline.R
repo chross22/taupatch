@@ -210,3 +210,65 @@ test_that("the probability table can be turned off", {
   expect_false(file.exists(file.path(config$paths$output_dir, "projections",
                                      "suitability.csv")))
 })
+
+test_that("the monthly projections stack into one raster", {
+  skip_on_cran()
+  config <- mock_config()
+  config$model$trees <- 50
+  config$model$cv_folds <- 3
+  config$projection$years <- c(2018, 2019)
+  config$projection$months <- c(6, 7)
+  config$projection$write_png <- FALSE
+  config$projection$write_grd <- TRUE
+  generate_mock_zoop_data(config)
+
+  result <- suppressMessages(suppressWarnings(run_taupatch(config)))
+  path <- attr(result$projections, "stack")
+
+  expect_true(!is.null(path) && file.exists(path))
+  # Two files, and one is no use without the other.
+  expect_true(file.exists(sub("[.]grd$", ".gri", path)))
+
+  stack <- terra::rast(path)
+  expect_equal(terra::nlyr(stack), nrow(result$projections))
+  # The dates are the reason for stacking, so they have to survive the write.
+  expect_equal(names(stack), c("2018_06", "2018_07", "2019_06", "2019_07"))
+  expect_equal(format(terra::time(stack)),
+               c("2018-06-15", "2018-07-15", "2019-06-15", "2019-07-15"))
+
+  # Same numbers as the GeoTIFF they came from.
+  first <- terra::rast(result$projections$geotiff[1])
+  expect_equal(as.vector(terra::values(stack[[1]])),
+               as.vector(terra::values(first)))
+
+  # The values are probabilities. Checked against the data rather than the
+  # header: terra writes a .grd header with no range in it, so minmax() reports
+  # a placeholder near 1e38 for any raster written this way, correct or not.
+  values <- terra::values(stack)
+  expect_true(all(values >= 0 & values <= 1, na.rm = TRUE))
+  expect_gt(max(values, na.rm = TRUE), 0)
+})
+
+test_that("the stack can be built after the fact, and says so when it cannot", {
+  skip_on_cran()
+  config <- mock_config()
+  config$model$trees <- 50
+  config$model$cv_folds <- 3
+  config$projection$years <- c(2018, 2018)
+  config$projection$months <- c(6, 6)
+  config$projection$write_png <- FALSE
+  generate_mock_zoop_data(config)
+
+  result <- suppressMessages(suppressWarnings(run_taupatch(config)))
+  expect_null(attr(result$projections, "stack"))
+
+  path <- file.path(tempfile("stack"), "suitability.grd")
+  dir.create(dirname(path))
+  expect_equal(write_suitability_stack(result$projections, path), path)
+  expect_equal(terra::nlyr(terra::rast(path)), 1L)
+
+  # Nothing to stack when the run wrote no rasters.
+  no_rasters <- result$projections
+  no_rasters$geotiff <- NA_character_
+  expect_error(write_suitability_stack(no_rasters, path), "No GeoTIFFs")
+})
