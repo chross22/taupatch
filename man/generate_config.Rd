@@ -16,6 +16,7 @@ generate_config(
   dataset_filter = "ECOMON",
   covariate_source = "copernicus",
   copernicus_datasets = default_copernicus_datasets(),
+  derivoce = list(),
   log_transform = character(),
   cv_folds = 10,
   trees = 500,
@@ -45,6 +46,8 @@ the original database (\code{cfin}, \code{ctyp}, \code{pseudo}) at the 90th perc
 \item{covariate_source}{one of \code{"copernicus"}, \code{"local_netcdf"}, \code{"mock"}}
 
 \item{copernicus_datasets}{list of Copernicus product/dataset/variable specs}
+
+\item{derivoce}{list of derived-covariate steps; see \code{\link[=derivoce_covariates]{derivoce_covariates()}}}
 
 \item{log_transform}{covariate columns to log-transform in the recipe}
 

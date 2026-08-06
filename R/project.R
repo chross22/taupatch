@@ -37,7 +37,16 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
       }
 
       predicted <- predict_grid(model, grid)
-      if (is.null(predicted)) next
+      if (is.null(predicted)) {
+        # Normal for the first month of the record once a lag, integral, or
+        # temporal gradient is configured: those are undefined there, so no cell
+        # has a complete predictor set. Said out loud rather than skipped
+        # silently, since the alternative cause is a covariate that failed to
+        # fetch for that month.
+        message("  no complete cells for ", year, "-", sprintf("%02d", month),
+                "; skipped")
+        next
+      }
 
       stem <- sprintf("%s_%d_%02d", species, year, month)
       geotiff_path <- NA_character_

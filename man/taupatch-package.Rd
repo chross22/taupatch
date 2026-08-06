@@ -6,7 +6,7 @@
 \alias{taupatch-package}
 \title{taupatch: Spatial Habitat Suitability Models for Zooplankton High-Abundance Patches}
 \description{
-Builds monthly spatial habitat suitability models for high-abundance patches ("tau-patches") of a zooplankton species, where a patch is defined by a species-specific abundance threshold. Zooplankton station data is matched to Copernicus Marine environmental covariates via the datamatch package, classified against the threshold, and modeled with a tidymodels workflow. Fitted models are projected to monthly habitat suitability maps. Species, covariates, thresholds, study area, and model settings are all driven by a YAML config rather than code edits. Rebuilt from the biomod2-based pipeline of Ross et al. (2023).
+Builds monthly spatial habitat suitability models for high-abundance patches ("tau-patches") of a zooplankton species, where a patch is defined by a species-specific abundance threshold. Zooplankton station data is matched to Copernicus Marine environmental covariates via the datamatch package, optionally extended with covariates derived from the covariate grid - gradients, fronts, lags, and flow diagnostics - via the derivoce package, classified against the threshold, and modeled with a tidymodels workflow. Fitted models are projected to monthly habitat suitability maps. Species, covariates, thresholds, study area, and model settings are all driven by a YAML config rather than code edits. Rebuilt from the biomod2-based pipeline of Ross et al. (2023).
 }
 \seealso{
 Useful links:

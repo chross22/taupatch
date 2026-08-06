@@ -98,7 +98,8 @@ apply_config_defaults <- function(config) {
   config$projection$years <- config$projection$years %||% config$dates$years
   config$projection$months <- config$projection$months %||% config$dates$months
   config$covariates <- modifyList(
-    list(source = "copernicus", derived = "jday", log_transform = character()),
+    list(source = "copernicus", derived = "jday", derivoce = list(),
+         log_transform = character()),
     config$covariates %||% list()
   )
   config
@@ -275,8 +276,11 @@ validate_covariates <- function(config) {
     }
   }
 
+  validate_derivoce(config)
+
   log_unknown <- setdiff(config$covariates$log_transform,
-                         c(selected, bathymetry, config$covariates$derived))
+                         c(selected, bathymetry, config$covariates$derived,
+                           derivoce_names(config)))
   if (length(log_unknown) > 0) {
     stop("covariates.log_transform names covariates that are not selected: ",
          paste(log_unknown, collapse = ", "), call. = FALSE)
@@ -372,6 +376,7 @@ validate_columns <- function(config) {
 #' @param dataset_filter values of the `dataset` column to keep; `NULL` keeps all
 #' @param covariate_source one of `"copernicus"`, `"local_netcdf"`, `"mock"`
 #' @param copernicus_datasets list of Copernicus product/dataset/variable specs
+#' @param derivoce list of derived-covariate steps; see [derivoce_covariates()]
 #' @param log_transform covariate columns to log-transform in the recipe
 #' @param cv_folds number of cross-validation folds
 #' @param trees number of trees in the random forest
@@ -389,6 +394,7 @@ generate_config <- function(name,
                             dataset_filter = "ECOMON",
                             covariate_source = "copernicus",
                             copernicus_datasets = default_copernicus_datasets(),
+                            derivoce = list(),
                             log_transform = character(),
                             cv_folds = 10,
                             trees = 500,
@@ -401,7 +407,8 @@ generate_config <- function(name,
     dates = list(years = years, months = months),
     study_area = list(bbox = bbox),
     covariates = list(source = covariate_source, copernicus = copernicus_datasets,
-                      derived = "jday", log_transform = log_transform),
+                      derived = "jday", derivoce = derivoce,
+                      log_transform = log_transform),
     model = list(engine = "ranger", trees = trees, cv_folds = cv_folds,
                  tune = FALSE, seed = 42),
     projection = list(write_geotiff = TRUE, write_png = TRUE, overwrite = TRUE)

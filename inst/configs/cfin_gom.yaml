@@ -92,6 +92,39 @@ covariates:
     - SLOPE
   derived:
     - jday     # day of year; the seasonality term
+  # Covariates computed from the grid above rather than downloaded, by the
+  # derivoce package. Steps run in order and see what earlier ones produced, so
+  # current_speed followed by a gradient of `speed` gives the original
+  # pipeline's uv_grad. Run taupatch::derivoce_covariates() for the step types
+  # and the column names each produces.
+  #
+  # Note two things before adding these. Lags and integrals are undefined for
+  # the first month of the record, so those stations drop out. And a gradient
+  # of a variable upsampled from a coarser product (CHL here, on the 0.25
+  # degree biogeochemistry grid) describes the source grid rather than the
+  # ocean - which is why SST, on the native 0.083 degree physics grid, is what
+  # the gradient and front steps below read.
+  derivoce:
+    - type: horizontal_gradient
+      vars: [SST]            # SST_grad, degrees C per km
+    - type: vertical_gradient
+      surface: SST
+      bottom: BOTT           # SST_BOTT_vgrad; the stratification index
+    - type: lag_covariate
+      vars: [CHL]
+      n: 1                   # CHL_lag1; last month's bloom feeds this month
+    - type: integrate_covariate
+      vars: [CHL]
+      window: year           # CHL_int; the original pipeline's int_chl
+    # The distance steps below rasterize and run a distance transform per month,
+    # which on the 0.083 degree grid is minutes rather than seconds per step,
+    # so they are left off by default rather than silently added to every run.
+    # distance_to_shore additionally needs the rnaturalearth package.
+    # - type: distance_to_front
+    #   var: SST               # SST_front_dist, km
+    # - type: distance_to_isobath
+    #   levels: [50, 100, 200] # isobath_dist_50/100/200; reads DEPTH above
+    # - distance_to_shore      # shore_dist, km; the original pipeline's dist
   # The original log-transformed both chlorophyll and bathymetry; both span
   # orders of magnitude across the shelf.
   log_transform:

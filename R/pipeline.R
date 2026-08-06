@@ -26,15 +26,24 @@ run_taupatch <- function(config_path, project = TRUE) {
   message("Fetching environmental covariates (", config$covariates$source, ")...")
   env_dat <- fetch_covariates(config)
 
-  # Summarized now rather than returning the whole grid, which for a real
-  # Copernicus fetch is millions of points.
-  covariate_means <- covariate_monthly_means(env_dat)
-
   bathy <- NULL
   if (length(config$covariates$bathymetry) > 0) {
     message("Fetching bathymetry (NOAA ETOPO)...")
     bathy <- study_area_bathymetry(config)
   }
+
+  # Derived covariates are computed on the grid, before stations are matched to
+  # it: a gradient or a front is a property of the field, and scattered station
+  # points cannot recover one. Everything after this treats them as ordinary
+  # covariate columns.
+  if (length(config$covariates$derivoce) > 0) {
+    message("Deriving covariates (derivoce)...")
+    env_dat <- add_derivoce_covariates(env_dat, config, bathy = bathy)
+  }
+
+  # Summarized now rather than returning the whole grid, which for a real
+  # Copernicus fetch is millions of points.
+  covariate_means <- covariate_monthly_means(env_dat)
 
   message("Matching covariates to stations...")
   dat <- attach_covariates(dat, env_dat, config)

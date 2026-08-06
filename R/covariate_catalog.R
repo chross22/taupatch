@@ -70,6 +70,21 @@ covariate_info <- function(include_derived = TRUE) {
                           "needing twelve separate models."),
       stringsAsFactors = FALSE
     ))
+
+    # The derivoce entries are step *types* rather than single covariates: one
+    # step produces a column per variable it is given, named for the variable it
+    # came from. What a configured run will actually produce is
+    # `derivoce_names()`.
+    derived <- derivoce_covariates()
+    info <- rbind(info, do.call(rbind, lapply(names(derived), function(name) {
+      entry <- derived[[name]]
+      data.frame(
+        name = name, label = entry$label, units = entry$units,
+        variable = "(derived)",
+        dataset = "(computed from the covariate grid by derivoce)",
+        description = entry$description, stringsAsFactors = FALSE
+      )
+    })))
   }
   info
 }

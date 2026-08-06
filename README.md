@@ -5,8 +5,11 @@ patches** ("tau-patches"), where a patch is any station whose abundance exceeds 
 species-specific threshold.
 
 Station data is matched to Copernicus Marine environmental covariates via
-[`datamatch`](https://github.com/chross22/datamatch), classified against the
-threshold, and modeled with a [tidymodels](https://www.tidymodels.org) workflow.
+[`datamatch`](https://github.com/chross22/datamatch), optionally extended with
+covariates derived from the covariate grid — gradients, fronts, lags, flow
+diagnostics — via [`derivoce`](https://github.com/chross22/derivoce), classified
+against the threshold, and modeled with a
+[tidymodels](https://www.tidymodels.org) workflow.
 The fitted model is then projected to a habitat suitability map for every
 configured month.
 
@@ -30,6 +33,12 @@ installed and configured with your Copernicus credentials, plus:
 ```r
 remotes::install_github("BigelowLab/copernicus")
 remotes::install_github("chross22/datamatch")
+```
+
+Derived covariates (`covariates.derivoce`) additionally need:
+
+```r
+remotes::install_github("chross22/derivoce")
 ```
 
 The Shiny app additionally needs `shiny` and `leaflet`.
@@ -187,9 +196,57 @@ covariates:
   log_transform: [CHL, DEPTH]
 ```
 
-These replace the SRTM30 depth/slope/distance-to-shore layers the original used.
-Distance to shore, gradients, time-integrals and lags are not here — those are
-derived quantities headed for a separate package.
+These replace the SRTM30 depth/slope layers the original used.
+
+### Derived covariates
+
+Gradients, fronts, lags, integrals, and flow diagnostics are computed rather than
+downloaded, by [`derivoce`](https://github.com/chross22/derivoce). They go under
+`covariates.derivoce` as a list of steps, each naming a derivoce function and the
+arguments for it:
+
+```yaml
+covariates:
+  selected: [SST, SSS, BOTT, CHL, UO, VO]
+  bathymetry: [DEPTH]
+  derivoce:
+    - type: horizontal_gradient
+      vars: [SST]              # SST_grad, degrees C per km
+    - type: vertical_gradient
+      surface: SST
+      bottom: BOTT             # SST_BOTT_vgrad, the stratification index
+    - type: lag_covariate
+      vars: [CHL]
+      n: 1                     # CHL_lag1
+    - type: integrate_covariate
+      vars: [CHL]
+      window: year             # CHL_int, the original pipeline's int_chl
+    - type: current_speed      # speed, the original pipeline's uv
+    - type: horizontal_gradient
+      vars: [speed]            # speed_grad, its uv_grad
+    - distance_to_shore        # shore_dist, its dist
+```
+
+Steps run in order and see the columns earlier ones produced, which is why
+`current_speed` followed by a gradient of `speed` works. `distance_to_front`,
+`distance_to_contour`, `distance_to_isobath`, `ftle`, and `fsle` are available
+too; `derivoce_covariates()` lists every step type with its units and the column
+names it produces.
+
+These are computed **on the covariate grid, before stations are matched to it** —
+a gradient or a front is a property of the field, and scattered station points
+cannot recover one. After that they are ordinary covariate columns: matched to
+stations, carried onto the projection grid, and picked up as predictors
+automatically. `covariates.log_transform` can name them.
+
+Three things cost data, and a run says so when they happen:
+
+- Lags, integrals, and temporal gradients are undefined in the first month of the
+  record. Stations there are dropped, and that month's projection is skipped.
+- Neighbourhood steps — gradients, fronts, Lyapunov exponents — are undefined on
+  the edge of the study area, so its border is lost from both the training
+  stations and the maps. Draw the bounding box wider than the stations.
+- A neighbourhood step reading an upsampled variable warns, for the reason below.
 
 ### Combining products of different resolution
 
@@ -313,6 +370,8 @@ R/config.R              load_config(), generate_config()
 R/zoop_data.R           load_zoop_data(), label_patch(), available_stages()
 R/covariate_catalog.R   copernicus_covariates(), covariate_info()
 R/covariates.R          fetch_covariates(), attach_covariates(), covariate_grid()
+R/bathymetry.R          bathymetry_covariates(), the static seafloor layers
+R/derivoce.R            derivoce_covariates(), add_derivoce_covariates()
 R/model.R               fit_patch_model()
 R/project.R             project_patch_model()
 R/plotting.R            plot_projection(), plot_importance()
