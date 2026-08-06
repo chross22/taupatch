@@ -96,11 +96,12 @@ parse_dates <- function(values, formats) {
 #' The suffix marking a life stage on a taxon column
 #'
 #' A `C` and a Roman numeral is the core of it, but the databases in use carry
-#' four more forms: a bare `C` for unstaged copepodites, `adult`, a combination
-#' spanning two stages (`CV_VI`, `CI_IV`), and `total`. All of them are suffixes
-#' on a taxon name, and a rule that recognised only the first would split one
-#' taxon into several species - `cfin_CV_VI` read as an animal called
-#' "cfin_CV_VI" rather than as some of cfin.
+#' several more forms: a bare `C` for unstaged copepodites, `adult`, `total`, a
+#' combination spanning two stages (`CV_VI`, `CI_IV`), and combinations written
+#' without the `C` at all (`ctyp_IV_VI`). All are suffixes on a taxon name, and a
+#' rule recognising only the first splits one taxon into several species -
+#' `cfin_CV_VI` read as an animal called "cfin_CV_VI" rather than as some of
+#' cfin.
 #'
 #' Matched without regard to case, because the databases disagree: the raw export
 #' is upper case throughout, while `original/create_database.R` writes a lower
@@ -112,7 +113,10 @@ parse_dates <- function(values, formats) {
 #' @export
 stage_suffix_pattern <- function() {
   roman <- "I{1,3}|IV|VI?"
-  paste0("_(C(?:", roman, ")?(?:_C?(?:", roman, "))?|adult|total)$")
+  # The leading C is optional on both halves. `ctyp_IV_VI` is a combination
+  # stage written without it, and read as part of the taxon it splits one
+  # animal into several.
+  paste0("_(C?(?:", roman, ")(?:_C?(?:", roman, "))?|C|adult|total)$")
 }
 
 #' Conventional shorthand for a taxon name
@@ -282,10 +286,13 @@ zoop_taxa <- function(header, suffix = "_10M2",
   bare <- sub(paste0(suffix, "$"), "", columns)
   staged <- grepl(stage_pattern, bare, ignore.case = TRUE)
 
+  # One match, used for both halves. Extracting the suffix with a greedy "^.*"
+  # in front of it finds the *rightmost* match while sub() strips the leftmost,
+  # so the two disagree the moment a suffix can match in two places -
+  # CALANUS_FINMARCHICUS_CV_VI reads as stage VI of a taxon ending in CV.
   taxon <- ifelse(staged, sub(stage_pattern, "", bare, ignore.case = TRUE), bare)
-  found <- ifelse(staged,
-                  sub(paste0("^.*", stage_pattern), "\\1", bare, ignore.case = TRUE),
-                  NA_character_)
+  # By position, since sub() takes one pattern and there is one per row.
+  found <- ifelse(staged, substring(bare, nchar(taxon) + 2), NA_character_)
 
   # `total` is a suffix that identifies the taxon but is not a stage: the column
   # is that taxon's total, which is what a stage-less column already is.
@@ -659,10 +666,8 @@ available_species <- function(zoop_file,
   staged <- grepl(stage_pattern, candidates, ignore.case = TRUE)
   taxon <- ifelse(staged, sub(stage_pattern, "", candidates, ignore.case = TRUE),
                   candidates)
-  found <- ifelse(staged,
-                  sub(paste0("^.*", stage_pattern), "\\1", candidates,
-                      ignore.case = TRUE),
-                  NA_character_)
+  # Derived from the taxon rather than matched again, so the two cannot disagree.
+  found <- ifelse(staged, substring(candidates, nchar(taxon) + 2), NA_character_)
   # A total is the taxon, not one of its stages, so it groups the columns
   # without being offered as something to select.
   stage <- ifelse(!is.na(found) & tolower(found) == "total", NA_character_,

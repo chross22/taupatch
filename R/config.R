@@ -320,6 +320,17 @@ validate_covariates <- function(config) {
     }
   }
 
+  excluded <- config$covariates$exclude
+  if (length(excluded) > 0) {
+    unknown <- setdiff(excluded, c(selected, bathymetry))
+    if (length(unknown) > 0) {
+      stop("covariates.exclude names covariates that are not fetched: ",
+           paste(unknown, collapse = ", "),
+           "\nIt drops a fetched covariate from the predictors; it cannot drop ",
+           "one that was never selected.", call. = FALSE)
+    }
+  }
+
   validate_prejoin(config)
   validate_derivoce(config)
   # A gap-filling source does not survive the join, so it cannot be transformed

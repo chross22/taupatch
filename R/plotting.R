@@ -518,6 +518,7 @@ plot_station_map <- function(dat, transform = c("log1p", "none"), path = NULL) {
 
   p <- ggplot2::ggplot(dat, ggplot2::aes(x = .data$lon, y = .data$lat,
                                           colour = .data$value)) +
+    coastline_layer(dat) +
     ggplot2::geom_point(size = 1.4, alpha = 0.8) +
     ggplot2::scale_colour_viridis_c(option = "magma", name = legend) +
     # Latitude and longitude are not the same distance, and a map drawn as if
@@ -538,7 +539,9 @@ plot_station_map <- function(dat, transform = c("log1p", "none"), path = NULL) {
 #' at once.
 #'
 #' @param dat station data from [load_zoop_data()]
-#' @param by whether to plot against year or day of year
+#' @param by `"record"` places each station at its own year and month, so the
+#'   seasonal cycle and the interannual swing show together; `"year"` and
+#'   `"season"` collapse onto one axis or the other
 #' @param path optional file to write the plot to instead of returning it
 #' @return a `ggplot` object, or `path` invisibly when writing
 #' @examples
@@ -546,12 +549,19 @@ plot_station_map <- function(dat, transform = c("log1p", "none"), path = NULL) {
 #' plot_station_series(load_zoop_data(config))
 #' }
 #' @export
-plot_station_series <- function(dat, by = c("year", "season"), path = NULL) {
+plot_station_series <- function(dat, by = c("record", "year", "season"),
+                                path = NULL) {
   by <- match.arg(by)
   dat <- dat[!is.na(dat$abundance), ]
   if (nrow(dat) == 0) stop("No abundances to plot.", call. = FALSE)
 
-  dat$x <- if (by == "year") dat$year else dat$month
+  # "record" places each station at its own month rather than collapsing the
+  # year onto one point, so the seasonal cycle and the interannual swing are
+  # visible at once instead of one at a time.
+  dat$x <- switch(by,
+                  record = dat$year + (dat$month - 0.5) / 12,
+                  year = dat$year,
+                  season = dat$month)
   summary <- stats::aggregate(dat$abundance, by = list(x = dat$x), FUN = stats::median,
                               na.rm = TRUE)
   names(summary)[2] <- "median"
@@ -565,7 +575,7 @@ plot_station_series <- function(dat, by = c("year", "season"), path = NULL) {
     # Abundance is heavily right-skewed, so a linear axis is one cloud at the
     # bottom and a handful of points far above it.
     ggplot2::scale_y_continuous(trans = "log1p") +
-    ggplot2::labs(x = if (by == "year") NULL else "Month",
+    ggplot2::labs(x = switch(by, season = "Month", NULL),
                   y = "Abundance (log scale)") +
     ggplot2::theme_minimal()
 
@@ -611,4 +621,39 @@ station_summary <- function(dat) {
     ),
     stringsAsFactors = FALSE
   )
+}
+
+#' A coastline under a station map
+#'
+#' Points on an empty background say where stations are relative to each other
+#' and nothing about where they are. A coastline is the difference between a
+#' scatter plot and a map.
+#'
+#' `rnaturalearth` is a Suggests, so a map without it is the scatter plot: worth
+#' less, but not worth failing over.
+#'
+#' @param dat station data, used to size the extent fetched
+#' @param margin degrees of coast to include beyond the stations
+#' @return a `ggplot2` layer, or `NULL` when the coastline is unavailable
+#' @keywords internal
+coastline_layer <- function(dat, margin = 2) {
+  if (!requireNamespace("rnaturalearth", quietly = TRUE)) return(NULL)
+
+  land <- tryCatch(
+    rnaturalearth::ne_countries(scale = "medium", returnclass = "sf"),
+    error = function(e) NULL
+  )
+  if (is.null(land)) return(NULL)
+
+  # Cropped to the stations, since drawing the whole world and then zooming
+  # leaves ggplot rendering geometry it will not show.
+  box <- c(xmin = min(dat$lon) - margin, xmax = max(dat$lon) + margin,
+           ymin = min(dat$lat) - margin, ymax = max(dat$lat) + margin)
+  # The crop warns that attributes are assumed constant across geometries,
+  # which is true and irrelevant: nothing here reads an attribute.
+  land <- tryCatch(suppressWarnings(sf::st_crop(sf::st_make_valid(land), box)),
+                   error = function(e) land)
+
+  ggplot2::geom_sf(data = land, inherit.aes = FALSE, fill = "grey92",
+                   colour = "grey70", linewidth = 0.25)
 }

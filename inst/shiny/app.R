@@ -78,17 +78,6 @@ transform_choices <- stats::setNames(
          vapply(transform_catalog, function(e) e$label, character(1)))
 )
 
-# The config allows a different transform per covariate; the sidebar offers one
-# transform applied to a set, which is what a run wants nearly always. A config
-# using several is read back as its largest group, and editing the YAML is the
-# way to keep more than one.
-app_transform <- function(config) {
-  spec <- taupatch:::covariate_transform_spec(config)
-  if (length(spec) == 0) return(list(type = "log1p", vars = character(0)))
-  largest <- names(spec)[which.max(lengths(spec))]
-  list(type = largest, vars = spec[[largest]])
-}
-
 ui <- fluidPage(
   tags$head(tags$style(HTML("
     /* A tiled copy of the header photo, dropped almost all the way out, over a
@@ -289,14 +278,8 @@ ui <- fluidPage(
         # in the server. Offering unselected covariates here would let a config
         # name a transform for something the run never fetches, which config
         # validation rejects.
-        selectInput("transform_vars", "Transform", multiple = TRUE,
-                    choices = character(0),
-                    selected = app_transform(base_config)$vars),
-        conditionalPanel(
-          "input.transform_vars && input.transform_vars.length > 0",
-          selectInput("transform_type", NULL, choices = transform_choices,
-                      selected = app_transform(base_config)$type)
-        ),
+        tags$label("Transforms", class = "control-label"),
+        uiOutput("transform_rows"),
         checkboxInput("normalize", "Centre and scale predictors",
                       value = !isFALSE(base_config$covariates$normalize)),
         actionLink("show_dictionary", "Covariate dictionary \u2192"),
@@ -365,9 +348,10 @@ tabPanel("Config", br(), verbatimTextOutput("config_yaml")),
                  br(),
                  h4("Abundance over the record"),
                  radioButtons("zoop_series_by", NULL, inline = TRUE,
-                              choices = c("By year" = "year",
+                              choices = c("Year and month" = "record",
+                                          "By year" = "year",
                                           "By month" = "season"),
-                              selected = "year"),
+                              selected = "record"),
                  plotOutput("zoop_series", height = "320px"),
                  br(),
                  h4("Distribution"),
@@ -669,10 +653,6 @@ server <- function(input, output, session) {
       if (length(resolvable) > 0) {
         helpText("Species resolved in this file: ",
                  paste(resolvable, collapse = ", "))
-      } else {
-        helpText("No species in the catalog resolves to columns in this file.",
-                 "The catalog names column prefixes, which this file may spell",
-                 "differently.")
       }
     )
   })
@@ -814,7 +794,15 @@ server <- function(input, output, session) {
     config$model$engine <- NULL
     config$model$trees <- input$trees %||% base_config$model$trees
     config$model$cv_folds <- input$cv_folds
-    config$covariates$selected <- input$covariates
+    # A derived covariate needs its inputs downloaded even when nobody wants
+    # them modelled, so they are added to the fetch and named in `exclude`,
+    # which keeps them out of the predictors.
+    ingredients <- derivoce_required_inputs(input$derived %||% character(),
+                                            input$covariates %||% character(),
+                                            input$bathymetry %||% character())
+    config$covariates$selected <- union(input$covariates %||% character(),
+                                        ingredients)
+    config$covariates$exclude <- ingredients
     config$covariates$bathymetry <- input$bathymetry %||% character()
     config$covariates$climate <- input$climate %||% character()
 
@@ -831,23 +819,26 @@ server <- function(input, output, session) {
     # merged back in by covariate_transform_spec().
     config$covariates$log_transform <- character()
 
-    # Narrowed to what is actually selected. An observer keeps the control's
-    # choices in step, but that is a round-trip to the browser and back: between
-    # deselecting a covariate and the client echoing the correction, the
-    # transform still names it, and a run started in that window dies in config
-    # validation rather than doing anything. Intersecting here means the config
-    # is never in that state to begin with.
-    transform_vars <- intersect(
-      input$transform_vars,
-      c(input$covariates, input$bathymetry, input$climate,
-        derivoce_names(config))
-    )
-    config$covariates$transform <- if (length(transform_vars) > 0) {
-      stats::setNames(list(transform_vars), input$transform_type)
-    } else {
-      list()
+    # Gathered from the per-covariate controls and inverted into the config's
+    # shape, which groups covariates under a transform rather than the other way
+    # round. Only covariates the run will actually have: a control left behind by
+    # a covariate since deselected would name something the config does not
+    # fetch, and fail validation.
+    chosen <- list()
+    for (v in transformable()) {
+      picked <- input[[paste0("transform_", v)]]
+      if (is.null(picked) || identical(picked, "none")) next
+      chosen[[picked]] <- c(chosen[[picked]], v)
     }
+    config$covariates$transform <- chosen
     config$covariates$normalize <- isTRUE(input$normalize)
+
+    # Fetched in parallel by default here, which a headless run leaves to the
+    # config. Someone sitting in front of a progress bar is waiting on the
+    # Copernicus API, and four requests at once is the difference between a
+    # coffee and an afternoon. Capped low: the bottleneck is their end.
+    config$covariates$n_workers <- config$covariates$n_workers %||%
+      min(4L, max(1L, parallel::detectCores() - 1L))
     config
   })
 
@@ -946,7 +937,7 @@ server <- function(input, output, session) {
   output$zoop_map <- renderPlot(plot_station_map(loaded_zoop()))
 
   output$zoop_series <- renderPlot({
-    plot_station_series(loaded_zoop(), by = input$zoop_series_by %||% "year")
+    plot_station_series(loaded_zoop(), by = input$zoop_series_by %||% "record")
   })
 
   output$zoop_distribution <- renderPlot({
@@ -1207,6 +1198,9 @@ server <- function(input, output, session) {
   # SST, and current speed needs both components. Recomputed as the selection
   # changes, dropping anything that is no longer buildable.
   derived_candidates <- reactive({
+    # fetchable defaults to the whole catalog, so the FSLE is offered whether or
+    # not the velocity components were picked as predictors. Choosing it adds
+    # them to the fetch and keeps them out of the model.
     derivoce_choices(input$covariates %||% character(),
                      input$bathymetry %||% character())
   })
@@ -1240,9 +1234,16 @@ server <- function(input, output, session) {
     }
     slow <- Filter(function(x) x$id %in% chosen && x$expensive, derived_candidates())
     lagged <- grepl("_lag|_int|_tgrad", chosen)
+    ingredients <- derivoce_required_inputs(chosen, input$covariates %||% character(),
+                                            input$bathymetry %||% character())
 
     tagList(
       helpText(length(chosen), " derived covariate(s) selected."),
+      if (length(ingredients) > 0) {
+        helpText(paste(ingredients, collapse = ", "),
+                 if (length(ingredients) == 1) " will be" else " will be",
+                 " downloaded to compute these, and kept out of the model.")
+      },
       if (any(lagged)) {
         helpText(class = "text-warning",
                  "Lags, accumulations and rates of change are undefined in the",
@@ -1282,22 +1283,52 @@ server <- function(input, output, session) {
              "seasons were unusual but nothing about where a patch is.")
   })
 
-  # Keep the transform choices in step with what is actually selected above.
-  # updateSelectInput rather than re-rendering the control, so an existing
-  # selection survives; a selection that is no longer available is dropped, since
-  # config validation rejects a transform naming an unfetched covariate.
-  observe({
+  # Every predictor a run will have, which is what a transform may name.
+  transformable <- reactive({
     derived <- vapply(derived_candidates(), function(x) x$id, character(1))
     derived <- intersect(derived, input$derived %||% character())
-    available <- c(input$covariates, input$bathymetry, derived, input$climate)
+    ingredients <- derivoce_required_inputs(input$derived %||% character(),
+                                            input$covariates %||% character(),
+                                            input$bathymetry %||% character())
+    # Ingredients are fetched but not modelled, so transforming one would be
+    # transforming something the model never sees.
+    setdiff(c(input$covariates, input$bathymetry, derived, input$climate),
+            ingredients)
+  })
 
-    labels <- c(covariate_choices, bathymetry_choices,
-                stats::setNames(derived, derived),
-                stats::setNames(names(climate_catalog), names(climate_catalog)))
-    choices <- labels[labels %in% available]
+  # One row per covariate rather than one transform applied to a set. Different
+  # covariates want different treatment - chlorophyll a fourth root, depth a
+  # log, a signed gradient Yeo-Johnson - and the config has always allowed that;
+  # only the control did not.
+  output$transform_rows <- renderUI({
+    covariates <- transformable()
+    if (length(covariates) == 0) {
+      return(helpText("Select covariates first."))
+    }
 
-    updateSelectInput(session, "transform_vars", choices = choices,
-                      selected = intersect(isolate(input$transform_vars), available))
+    existing <- taupatch:::covariate_transform_spec(base_config)
+    current <- stats::setNames(rep("none", length(covariates)), covariates)
+    for (name in names(existing)) {
+      for (v in intersect(existing[[name]], covariates)) current[[v]] <- name
+    }
+
+    rows <- lapply(covariates, function(v) {
+      fluidRow(
+        style = "margin-bottom: 2px;",
+        column(5, style = "padding-right: 4px; padding-top: 6px;",
+               tags$small(v)),
+        column(7, style = "padding-left: 4px;",
+               selectInput(paste0("transform_", v), NULL,
+                           choices = c("none", names(transform_catalog)),
+                           selected = isolate(input[[paste0("transform_", v)]]) %||%
+                             current[[v]],
+                           width = "100%"))
+      )
+    })
+    tagList(rows,
+            helpText("One transform each. taupatch::covariate_transforms()",
+                     "describes them; the log and root family folds a negative",
+                     "sign, so a gradient wants yeojohnson."))
   })
 
   # Names what is currently selected, so the chosen predictor set is legible

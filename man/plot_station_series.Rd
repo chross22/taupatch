@@ -4,12 +4,14 @@
 \alias{plot_station_series}
 \title{Abundance over the record}
 \usage{
-plot_station_series(dat, by = c("year", "season"), path = NULL)
+plot_station_series(dat, by = c("record", "year", "season"), path = NULL)
 }
 \arguments{
 \item{dat}{station data from \code{\link[=load_zoop_data]{load_zoop_data()}}}
 
-\item{by}{whether to plot against year or day of year}
+\item{by}{\code{"record"} places each station at its own year and month, so the
+seasonal cycle and the interannual swing show together; \code{"year"} and
+\code{"season"} collapse onto one axis or the other}
 
 \item{path}{optional file to write the plot to instead of returning it}
 }

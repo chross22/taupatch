@@ -11,11 +11,12 @@ a regular expression with one capture group, the suffix
 }
 \description{
 A \code{C} and a Roman numeral is the core of it, but the databases in use carry
-four more forms: a bare \code{C} for unstaged copepodites, \code{adult}, a combination
-spanning two stages (\code{CV_VI}, \code{CI_IV}), and \code{total}. All of them are suffixes
-on a taxon name, and a rule that recognised only the first would split one
-taxon into several species - \code{cfin_CV_VI} read as an animal called
-"cfin_CV_VI" rather than as some of cfin.
+several more forms: a bare \code{C} for unstaged copepodites, \code{adult}, \code{total}, a
+combination spanning two stages (\code{CV_VI}, \code{CI_IV}), and combinations written
+without the \code{C} at all (\code{ctyp_IV_VI}). All are suffixes on a taxon name, and a
+rule recognising only the first splits one taxon into several species -
+\code{cfin_CV_VI} read as an animal called "cfin_CV_VI" rather than as some of
+cfin.
 }
 \details{
 Matched without regard to case, because the databases disagree: the raw export

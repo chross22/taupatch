@@ -4,16 +4,24 @@
 \alias{derivoce_choices}
 \title{Derived covariates offerable for a given covariate selection}
 \usage{
-derivoce_choices(selected, bathymetry = character())
+derivoce_choices(
+  selected,
+  bathymetry = character(),
+  fetchable = names(copernicus_covariates())
+)
 }
 \arguments{
 \item{selected}{time-varying covariate names, as in \code{covariates.selected}}
 
 \item{bathymetry}{static covariate names, as in \code{covariates.bathymetry}}
+
+\item{fetchable}{covariates that could be added to the run if a derived one
+needs them; the whole Copernicus catalog by default}
 }
 \value{
 a list of candidates, each with \code{id} (the column it produces),
-\code{label}, \code{group}, \code{expensive}, and \code{step} (the \code{covariates.derivoce} entry)
+\code{label}, \code{group}, \code{expensive}, \code{step} (the \code{covariates.derivoce} entry), and
+\code{requires} (covariates that must be fetched but are not yet selected)
 }
 \description{
 \code{\link[=derivoce_covariates]{derivoce_covariates()}} describes step \emph{types}, which is what a config writes

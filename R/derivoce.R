@@ -501,19 +501,29 @@ validate_derivoce <- function(config) {
 #'
 #' @param selected time-varying covariate names, as in `covariates.selected`
 #' @param bathymetry static covariate names, as in `covariates.bathymetry`
+#' @param fetchable covariates that could be added to the run if a derived one
+#'   needs them; the whole Copernicus catalog by default
 #' @return a list of candidates, each with `id` (the column it produces),
-#'   `label`, `group`, `expensive`, and `step` (the `covariates.derivoce` entry)
+#'   `label`, `group`, `expensive`, `step` (the `covariates.derivoce` entry), and
+#'   `requires` (covariates that must be fetched but are not yet selected)
 #' @examples
 #' choices <- derivoce_choices(c("SST", "BOTT", "CHL"))
 #' vapply(choices, function(x) x$id, character(1))
 #' @seealso [derivoce_steps_for()] to turn chosen ids back into config steps
 #' @export
-derivoce_choices <- function(selected, bathymetry = character()) {
+derivoce_choices <- function(selected, bathymetry = character(),
+                             fetchable = names(copernicus_covariates())) {
   selected <- as.character(selected)
   bathymetry <- as.character(bathymetry)
+  # A covariate a derived one is computed from has to be downloaded, but it does
+  # not have to be modelled. Wanting the FSLE is not wanting the two velocity
+  # components as predictors.
+  available <- union(selected, as.character(fetchable))
 
-  candidate <- function(id, label, group, step, expensive = FALSE) {
-    list(id = id, label = label, group = group, expensive = expensive, step = step)
+  candidate <- function(id, label, group, step, expensive = FALSE,
+                        requires = character()) {
+    list(id = id, label = label, group = group, expensive = expensive,
+         step = step, requires = setdiff(requires, selected))
   }
 
   # One per fetched covariate. These are the cheap ones, and the ones a habitat
@@ -555,20 +565,21 @@ derivoce_choices <- function(selected, bathymetry = character()) {
   }
 
   # Steps that read particular covariates, offered only when those were fetched.
-  if (all(c("SST", "BOTT") %in% selected)) {
+  if (all(c("SST", "BOTT") %in% available)) {
     out[[length(out) + 1]] <- candidate(
       "SST_BOTT_vgrad", "Stratification (surface minus bottom temperature)",
-      "Spatial", list(type = "vertical_gradient", surface = "SST", bottom = "BOTT")
+      "Spatial", list(type = "vertical_gradient", surface = "SST", bottom = "BOTT"),
+      requires = c("SST", "BOTT")
     )
   }
-  if (all(c("UO", "VO") %in% selected)) {
+  if (all(c("UO", "VO") %in% available)) {
     out[[length(out) + 1]] <- candidate(
       "speed", "Current speed", "Flow",
-      list(type = "current_speed")
+      list(type = "current_speed"), requires = c("UO", "VO")
     )
     out[[length(out) + 1]] <- candidate(
       "EKE", "Eddy kinetic energy", "Flow",
-      list(type = "eke")
+      list(type = "eke"), requires = c("UO", "VO")
     )
     # Backward rather than forward, because backward finds the attracting
     # structures where water converges and plankton accumulate, which is the
@@ -577,12 +588,12 @@ derivoce_choices <- function(selected, bathymetry = character()) {
     out[[length(out) + 1]] <- candidate(
       "backward_ftle", "Attracting structures, FTLE (14-day)", "Flow",
       list(type = "ftle", direction = "backward", integration_days = 14),
-      expensive = TRUE
+      expensive = TRUE, requires = c("UO", "VO")
     )
     out[[length(out) + 1]] <- candidate(
       "backward_fsle", "Attracting structures, FSLE (50 km)", "Flow",
       list(type = "fsle", direction = "backward", final_separation = 50),
-      expensive = TRUE
+      expensive = TRUE, requires = c("UO", "VO")
     )
   }
   if ("DEPTH" %in% bathymetry) {
@@ -617,4 +628,27 @@ derivoce_steps_for <- function(ids, selected, bathymetry = character()) {
   choices <- derivoce_choices(selected, bathymetry)
   chosen <- Filter(function(x) x$id %in% ids, choices)
   lapply(chosen, function(x) x$step)
+}
+
+#' Covariates a set of derived choices needs fetching
+#'
+#' A derived covariate is computed from others, and those have to be downloaded
+#' whether or not anyone wants to model them. Asking for the FSLE means fetching
+#' the two velocity components; it does not mean wanting them as predictors.
+#'
+#' @param ids column names chosen from [derivoce_choices()]
+#' @param selected covariates already selected
+#' @param bathymetry static covariate names
+#' @return character vector of covariates to fetch that are not already selected
+#' @examples
+#' # The FSLE needs the velocity components, which nobody asked to model.
+#' derivoce_required_inputs("backward_fsle", selected = "SST")
+#' @seealso [derivoce_steps_for()]
+#' @export
+derivoce_required_inputs <- function(ids, selected, bathymetry = character()) {
+  if (length(ids) == 0) return(character())
+
+  choices <- derivoce_choices(selected, bathymetry)
+  chosen <- Filter(function(x) x$id %in% ids, choices)
+  unique(unlist(lapply(chosen, function(x) x$requires))) %||% character()
 }

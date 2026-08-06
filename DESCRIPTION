@@ -45,6 +45,7 @@ Suggests:
     marmap,
     shiny,
     shinyFiles,
+    rnaturalearth,
     testthat (>= 3.0.0)
 Remotes:
     chross22/datamatch,

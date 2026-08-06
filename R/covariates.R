@@ -387,9 +387,13 @@ add_derived_covariates <- function(dat, config) {
 predictor_names <- function(dat, config) {
   # An offset enters the formula with its coefficient fixed at 1, so it is not
   # something the model estimates and must not be handed over as a predictor.
+  # covariates.exclude names what was fetched as an ingredient rather than as a
+  # predictor: the velocity components behind an FSLE, say, which have to be
+  # downloaded and then have no business in the model.
   non_predictors <- c("lon", "lat", "LON", "LAT", "year", "month", "day",
                       "dataset", "station", "abundance", "patch",
-                      config$model[["offset"]])
+                      config$model[["offset"]],
+                      config$covariates$exclude)
   candidates <- setdiff(names(dat), non_predictors)
   candidates[vapply(dat[candidates], is.numeric, logical(1))]
 }
