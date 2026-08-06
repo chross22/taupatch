@@ -67,8 +67,8 @@ installed and configured with your Copernicus credentials, plus:
 remotes::install_github("chross22/datamatch")
 ```
 
-`datamatch` no longer depends on `BigelowLab/copernicus` — it calls the
-Copernicus Marine Toolbox directly — so that package no longer needs installing.
+`datamatch` calls the Copernicus Marine Toolbox directly now, so
+`BigelowLab/copernicus` no longer needs installing.
 
 Derived covariates (`covariates.derivoce`) additionally need:
 
@@ -117,8 +117,8 @@ config <- load_config("inst/configs/cfin_gom.yaml")   # edit paths.zoop_file fir
 result <- run_taupatch(config)
 ```
 
-`inst/configs/cfin_gom.yaml` is a documented example — *Calanus finmarchicus* from
-ECOMON stations with monthly Copernicus physical covariates. Generate new configs
+`inst/configs/cfin_gom.yaml` is a documented example. It models *Calanus
+finmarchicus* from ECOMON stations with monthly Copernicus physical covariates. Generate new configs
 programmatically rather than hand-editing YAML:
 
 ```r
@@ -261,7 +261,7 @@ long the Copernicus download took to get there.
 ### Species and life stages
 
 Each species names the prefix of its columns in the database. `column_prefix`
-defaults to the species key, so only an aliased name needs it — `pcal` is the one
+defaults to the species key, so only an aliased name needs it. `pcal` is the one
 case, since its columns are `pseudo_*`:
 
 ```yaml
@@ -351,7 +351,7 @@ covariate_info()[, c("name", "label", "units")]
 `jday` is what lets one pooled model produce month-specific maps instead of
 requiring twelve separate models.
 
-**Seafloor covariates are static** — they don't vary by month, so they're
+**Seafloor covariates are static.** They don't vary by month, so they're
 downloaded once from NOAA ETOPO via `marmap::getNOAA.bathy()` and attached to
 every time step. They go under their own config key, since they don't come from
 Copernicus:
@@ -434,8 +434,8 @@ covariates:
 |---|---|
 | `log1p` | `log(1 + \|x\|)`. Defined at zero, which the plain logs are not |
 | `log` / `log10` | Natural and base-10 log of the magnitude |
-| `sqrt` / `fourth_root` | Milder compression, defined at zero; fourth root is the plankton standard |
-| `boxcox` | Estimates the best power per covariate; needs strictly positive input |
+| `sqrt` / `fourth_root` | Milder compression, defined at zero. Fourth root is the plankton standard |
+| `boxcox` | Estimates the best power per covariate. Needs strictly positive input |
 | `yeojohnson` | Box-Cox extended to zero and negative values |
 
 Two rules the package checks against the data rather than trusting:
@@ -504,8 +504,8 @@ it.
 
 ### Combining products of different resolution
 
-Copernicus products do not share a grid — physics is 0.083 degrees,
-biogeochemistry 0.25 — so selecting `SST` and `CHL` together means two grids that
+Copernicus products do not share a grid. Physics is 0.083 degrees and
+biogeochemistry 0.25, so selecting `SST` and `CHL` together means two grids that
 have to be reconciled onto one. `covariates.grid` decides which:
 
 ```yaml
@@ -576,9 +576,9 @@ On top of that, each model contributes what only it can:
 | `rf` / `brt` | None. The partial effect curve *is* their answer |
 
 With [`fancygam`](https://github.com/chross22/fancygam) installed, a GAM also
-gets its **fitted smooths** drawn — each term with its standard error band and a
-rug showing where the data actually is. Those carry uncertainty, which a partial
-dependence curve cannot:
+gets its **fitted smooths** drawn. Each term appears with its standard error band
+and a rug showing where the data actually is. Those carry uncertainty, which a
+partial dependence curve cannot:
 
 ```r
 remotes::install_github("chross22/fancygam")
@@ -635,17 +635,17 @@ run_taupatch_app("inst/configs/cfin_gom.yaml")  # your own config
 Pick a species, life stages, threshold, windows, study area, and covariates, then
 run the model. Tabs:
 
-- **Config** — the exact YAML a run would use, so anything done in the GUI is
+- **Config**: the exact YAML a run would use, so anything done in the GUI is
   reproducible from a config file
-- **Covariates** — every covariate's units, long name, and source dataset; click
+- **Covariates**: every covariate's units, long name, and source dataset. Click
   one for its full definition
-- **Results** — cross-validated metrics, variable importance, threshold used
-- **Maps** — monthly suitability on a leaflet basemap, plus a button to download
+- **Results**: cross-validated metrics, variable importance, threshold used
+- **Maps**: monthly suitability on a leaflet basemap, plus a button to download
   the whole projection stack as a zip of `<year>-<month>.tiff` files
-- **Covariate trends** — month-by-year heatmap of each covariate's study-area
+- **Covariate trends**: month-by-year heatmap of each covariate's study-area
   mean, which makes the seasonal cycle read down a column and gaps in the record
   show up as blank cells
-- **Log** — stage-by-stage output from the run
+- **Log**: stage-by-stage output from the run
 
 ### Reading the evaluation
 
