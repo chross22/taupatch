@@ -29,7 +29,11 @@ test_that("defaults target ECOMON", {
 
   expect_equal(config$columns$dataset_filter, "ECOMON")
   expect_equal(config$columns$lat, "lat")
-  expect_equal(config$model$engine, "ranger")
+  # model.type is deliberately absent from the defaults so resolve_model_type()
+  # can still read an older config's `engine`; a default would overwrite that
+  # inference and make `engine: xgboost` silently fit a forest.
+  expect_null(config$model$type)
+  expect_equal(resolve_model_type(config), "rf")
   expect_false(config$model$tune)
 })
 

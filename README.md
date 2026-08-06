@@ -1,5 +1,9 @@
 # taupatch
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/chross22/taupatch/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/chross22/taupatch/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
 Monthly spatial habitat suitability models for **high-abundance zooplankton
 patches** ("tau-patches"), where a patch is any station whose abundance exceeds a
 species-specific threshold.
@@ -170,7 +174,7 @@ covariates:
 
 # 7. How it is fitted.
 model:
-  engine: ranger
+  type: rf                  # rf | brt | glm | gam
   trees: 500
   cv_folds: 10
   tune: false
@@ -495,6 +499,47 @@ native resolution.
 A run reports which covariates were upsampled, and records them on the result as
 an `upsampled` attribute.
 
+### Model type
+
+Four models, chosen with one word:
+
+```yaml
+model:
+  type: gam       # rf | brt | glm | gam
+  cv_folds: 10
+  tune: false
+```
+
+| `type` | Model | Engine |
+|---|---|---|
+| `rf` | Random forest | `ranger` |
+| `brt` | Boosted regression trees | `xgboost` |
+| `glm` | Logistic regression | `stats::glm` |
+| `gam` | Generalized additive model | `mgcv` |
+
+They are worth running against each other rather than picking one. If the GLM
+and the forest rank the same stations, the relationships are close to monotonic
+and the flexible model is not buying much; if they disagree sharply, either the
+response is genuinely non-linear or the forest is fitting noise. The GAM sits in
+between and is the one that will *tell* you which — each term is a curve you can
+plot, which a forest cannot give you.
+
+`trees` applies to `rf` and `brt`; `brt` also takes `learn_rate` and
+`tree_depth`, and `gam` takes `select_features`. `model.tune` searches the
+hyperparameters a type actually has — a GLM has none, and asking to tune one is
+an error rather than a silent no-op. `model_types()` describes each.
+
+**Variable importance is computed the same way for all four**: the drop in ROC
+AUC when a predictor is shuffled, averaged over several shuffles. Engine-reported
+importances are not comparable — ranger's permutation drop and xgboost's split
+gain are different quantities on different scales — and a GLM and GAM have none
+at all. One definition is what makes comparing the four meaningful. It is
+measured on the training data, so it flatters a model that overfits in absolute
+terms, but the ranking holds.
+
+Only `ranger` is needed for the default. `brt` needs `xgboost` and `gam` needs
+`mgcv`, checked before fitting rather than at load.
+
 ### Training and projection windows
 
 These are separate, since fitting on a long history and projecting a shorter or
@@ -594,6 +639,7 @@ R/bathymetry.R          bathymetry_covariates(), the static seafloor layers
 R/prejoin.R             prejoin_steps(), apply_prejoin_steps()
 R/derivoce.R            derivoce_covariates(), add_derivoce_covariates()
 R/model.R               fit_patch_model()
+R/model_types.R         model_types(), permutation_importance()
 R/project.R             project_patch_model()
 R/plotting.R            plot_projection(), plot_importance()
 R/pipeline.R            run_taupatch()

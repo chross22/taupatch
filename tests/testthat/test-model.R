@@ -19,6 +19,17 @@ test_that("build_model_spec tags arguments for tuning when tune is TRUE", {
   expect_setequal(tune::tune_args(spec)$name, c("mtry", "min_n"))
 })
 
+test_that("tuning a model with no hyperparameters is refused", {
+  # A GLM has nothing to search. Saying so is better than silently doing a
+  # ten-point grid search over one identical point.
+  config <- mock_config()
+  config$model$type <- "glm"
+  config$model$tune <- TRUE
+
+  expect_error(validate_model(config), "no hyperparameters to tune")
+  expect_error(build_model_spec(config), "no hyperparameters to tune")
+})
+
 test_that("the recipe log-transforms only the named covariates", {
   config <- mock_config()
   config$covariates$log_transform <- "thetao"

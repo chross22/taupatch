@@ -28,6 +28,13 @@ bathymetry_choices <- covariate_labels(
   covariate_reference[covariate_reference$name %in% bathymetry_names, ]
 )
 
+# "rf - Random forest" in the dropdown, "rf" as the value.
+model_type_catalog <- model_types()
+model_type_choices <- stats::setNames(
+  names(model_type_catalog),
+  vapply(model_type_catalog, function(m) m$label, character(1))
+)
+
 # "log1p - log(1 + |x|)" in the dropdown, "log1p" as the value.
 transform_catalog <- covariate_transforms()
 transform_choices <- stats::setNames(
@@ -166,7 +173,15 @@ ui <- fluidPage(
 
       hr(),
       h4("Model"),
-      numericInput("trees", "Trees", value = base_config$model$trees, min = 1),
+      selectInput("model_type", "Type", choices = model_type_choices,
+                  selected = taupatch:::resolve_model_type(base_config)),
+      uiOutput("model_type_note"),
+      # Trees mean nothing to a GLM or a GAM, so the control is not offered
+      # for them rather than being offered and ignored.
+      conditionalPanel(
+        "input.model_type == 'rf' || input.model_type == 'brt'",
+        numericInput("trees", "Trees", value = base_config$model$trees, min = 1)
+      ),
       numericInput("cv_folds", "CV folds", value = base_config$model$cv_folds, min = 2),
 
       hr(),
@@ -387,7 +402,11 @@ server <- function(input, output, session) {
 
     config$study_area$bbox <- list(xmin = input$xmin, xmax = input$xmax,
                                     ymin = input$ymin, ymax = input$ymax)
-    config$model$trees <- input$trees
+    config$model$type <- input$model_type
+    # An older config's `engine` would otherwise still be there and be read as
+    # the type by anything reading the downloaded file.
+    config$model$engine <- NULL
+    config$model$trees <- input$trees %||% base_config$model$trees
     config$model$cv_folds <- input$cv_folds
     config$covariates$selected <- input$covariates
     config$covariates$bathymetry <- input$bathymetry %||% character()
@@ -419,6 +438,11 @@ server <- function(input, output, session) {
     config$species$resolved <- NULL
     yaml::as.yaml(config[c("paths", "columns", "species", "dates",
                             "study_area", "covariates", "model", "projection")])
+  })
+
+  output$model_type_note <- renderUI({
+    req(input$model_type)
+    helpText(model_type_catalog[[input$model_type]]$description)
   })
 
   output$download_config <- downloadHandler(

@@ -40,6 +40,8 @@ Suggests:
     derivoce,
     leaflet,
     ranger,
+    xgboost,
+    mgcv,
     marmap,
     shiny,
     testthat (>= 3.0.0)

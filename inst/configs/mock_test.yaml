@@ -58,7 +58,7 @@ covariates:
   normalize: true
 
 model:
-  engine: ranger
+  type: rf
   trees: 200
   cv_folds: 5
   tune: false

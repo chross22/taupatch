@@ -9,14 +9,12 @@
 #' @param dat labeled modeling data from `label_patch()` with covariates attached
 #' @param config a config list, as returned by `load_config()`
 #' @return a list with `workflow` (the fitted workflow), `metrics` (cross-validated
-#'   performance), `importance` (permutation variable importance), `predictors`,
-#'   and `threshold`
+#'   performance), `importance` (permutation variable importance), `type` (the
+#'   model type fitted), `predictors`, and `threshold`
 #' @export
 fit_patch_model <- function(dat, config) {
-  if (!requireNamespace("ranger", quietly = TRUE)) {
-    stop("The 'ranger' package is required. Install it with install.packages('ranger').",
-         call. = FALSE)
-  }
+  type <- resolve_model_type(config)
+  check_model_packages(type)
   set.seed(config$model$seed)
 
   predictors <- predictor_names(dat, config)
@@ -28,9 +26,17 @@ fit_patch_model <- function(dat, config) {
 
   rec <- build_recipe(model_data, config)
   spec <- build_model_spec(config)
+
+  # mgcv has to be told which terms are smooth, and parsnip passes that as a
+  # formula. The other three take their predictors from the recipe.
+  formula <- model_formula(type, model_data, predictors)
   wf <- workflows::workflow() |>
-    workflows::add_recipe(rec) |>
-    workflows::add_model(spec)
+    workflows::add_recipe(rec)
+  wf <- if (is.null(formula)) {
+    workflows::add_model(wf, spec)
+  } else {
+    workflows::add_model(wf, spec, formula = formula)
+  }
 
   folds <- rsample::vfold_cv(model_data, v = config$model$cv_folds, strata = "patch")
   metrics <- patch_metric_set()
@@ -64,7 +70,8 @@ fit_patch_model <- function(dat, config) {
     evaluation = evaluation_table(predictions, cv_metrics, cutoff),
     predictions = predictions,
     classification_threshold = cutoff,
-    importance = extract_importance(fitted),
+    importance = permutation_importance(fitted, model_data, predictors),
+    type = type,
     predictors = predictors,
     threshold = attr(dat, "threshold")
   )
@@ -270,33 +277,6 @@ add_transform_step <- function(rec, vars, entry) {
   entry$step(rec, vars)
 }
 
-#' Build the model specification
-#'
-#' Random forest by default, matching the original. Because the engine is a config
-#' field rather than baked into the code, swapping in another classifier is a
-#' config change — which is what the GUI's model picker exposes.
-#'
-#' @param config a config list, as returned by `load_config()`
-#' @return a `parsnip` model specification
-#' @keywords internal
-build_model_spec <- function(config) {
-  tuning <- isTRUE(config$model$tune)
-
-  # parsnip captures its arguments as quosures, so the values must be resolved
-  # before the call. Passing `if (tuning) tune() else x` directly stores the
-  # unevaluated expression, and parsnip then sees a literal tune() in it and
-  # treats the argument as tagged for tuning even when it isn't.
-  args <- list(trees = config$model$trees)
-  mtry <- if (tuning) tune::tune() else config$model$mtry
-  min_n <- if (tuning) tune::tune() else config$model$min_n
-  if (!is.null(mtry)) args$mtry <- mtry
-  if (!is.null(min_n)) args$min_n <- min_n
-
-  do.call(parsnip::rand_forest, args) |>
-    parsnip::set_engine(config$model$engine, importance = "permutation") |>
-    parsnip::set_mode("classification")
-}
-
 #' Metric set for patch models
 #'
 #' ROC AUC, Cohen's kappa, sensitivity, and specificity — the first three matching
@@ -332,20 +312,3 @@ add_tss <- function(metrics) {
   rbind(metrics, tss_row)
 }
 
-#' Extract permutation variable importance
-#'
-#' Read from the underlying `ranger` fit rather than via an extra package, since
-#' the engine already computes it.
-#'
-#' @param fitted a fitted workflow
-#' @return a tibble of `variable` and `importance`, most important first
-#' @keywords internal
-extract_importance <- function(fitted) {
-  engine_fit <- workflows::extract_fit_engine(fitted)
-  importance <- engine_fit$variable.importance
-  if (is.null(importance)) {
-    return(tibble::tibble(variable = character(), importance = numeric()))
-  }
-  tibble::tibble(variable = names(importance), importance = unname(importance)) |>
-    dplyr::arrange(dplyr::desc(.data$importance))
-}

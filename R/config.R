@@ -20,6 +20,7 @@ load_config <- function(path) {
   config <- apply_config_defaults(config)
 
   validate_species(config)
+  validate_model(config)
   validate_dates(config)
   validate_study_area(config)
   validate_covariates(config)
@@ -84,8 +85,12 @@ apply_config_defaults <- function(config) {
          dataset = "dataset", dataset_filter = "ECOMON"),
     config$columns %||% list()
   )
+  # `type` is deliberately not defaulted. resolve_model_type() falls back to a
+  # random forest when it is absent, and can read an older config's `engine`
+  # instead - a default here would overwrite that inference with "rf" and make
+  # `engine: xgboost` silently fit a forest.
   config$model <- modifyList(
-    list(engine = "ranger", trees = 500, mtry = NULL, min_n = NULL,
+    list(trees = 500, mtry = NULL, min_n = NULL,
          cv_folds = 10, tune = FALSE, seed = 42),
     config$model %||% list()
   )
@@ -172,6 +177,27 @@ validate_threshold <- function(threshold, species_name) {
     stop("species.catalog.", species_name,
          ".threshold.value must be positive for type 'absolute', got ",
          threshold$value, ".", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Validate the model block
+#'
+#' The type and its tuning, checked at load rather than after the covariates
+#' have been downloaded and the stations matched.
+#'
+#' @param config a parsed config list
+#' @return `TRUE` invisibly; errors otherwise
+#' @keywords internal
+validate_model <- function(config) {
+  type <- resolve_model_type(config)
+  entry <- model_types()[[type]]
+
+  if (isTRUE(config$model$tune) && length(entry$tunable) == 0) {
+    stop("model.tune is true, but ", entry$label, " has no hyperparameters to ",
+         "tune. Set model.tune to false, or choose a type that does: ",
+         paste(names(Filter(function(m) length(m$tunable) > 0, model_types())),
+               collapse = ", "), call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -397,7 +423,7 @@ validate_columns <- function(config) {
 #' @param transform named list of transform to covariate names; see
 #'   [covariate_transforms()]
 #' @param normalize whether to center and scale the predictors
-#' @param engine the parsnip engine to fit with
+#' @param type which model to fit; see [model_types()]
 #' @param trees number of trees in the random forest
 #' @param cv_folds number of cross-validation folds
 #' @param dir directory to write the config into
@@ -427,7 +453,7 @@ generate_config <- function(name,
                             derivoce = list(),
                             transform = list(log1p = c("CHL", "DEPTH")),
                             normalize = TRUE,
-                            engine = "ranger",
+                            type = "rf",
                             trees = 500,
                             cv_folds = 10,
                             dir = "inst/configs") {
@@ -451,7 +477,7 @@ generate_config <- function(name,
     dates = list(years = as.integer(years), months = as.integer(months)),
     study_area = list(bbox = bbox),
     covariates = covariates,
-    model = list(engine = engine, trees = as.integer(trees),
+    model = list(type = type, trees = as.integer(trees),
                  cv_folds = as.integer(cv_folds), tune = FALSE, seed = 42L),
     projection = list(write_geotiff = TRUE, write_png = TRUE, overwrite = TRUE)
   )

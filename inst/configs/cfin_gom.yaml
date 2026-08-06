@@ -162,7 +162,8 @@ covariates:
   n_workers: 4
 
 model:
-  engine: ranger
+  # rf | brt | glm | gam - taupatch::model_types() describes each.
+  type: rf
   trees: 500
   cv_folds: 10
   tune: false

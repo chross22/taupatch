@@ -20,7 +20,7 @@ generate_config(
   derivoce = list(),
   transform = list(log1p = c("CHL", "DEPTH")),
   normalize = TRUE,
-  engine = "ranger",
+  type = "rf",
   trees = 500,
   cv_folds = 10,
   dir = "inst/configs"
@@ -60,7 +60,7 @@ joined; see \code{\link[=prejoin_steps]{prejoin_steps()}}}
 
 \item{normalize}{whether to center and scale the predictors}
 
-\item{engine}{the parsnip engine to fit with}
+\item{type}{which model to fit; see \code{\link[=model_types]{model_types()}}}
 
 \item{trees}{number of trees in the random forest}
 
