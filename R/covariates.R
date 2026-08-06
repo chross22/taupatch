@@ -488,7 +488,11 @@ plot_covariate_map <- function(env_dat, covariate, year, month, path = NULL) {
     ggplot2::geom_point(size = 1.1, shape = 15) +
     ggplot2::scale_colour_viridis_c(option = "magma",
                                     name = axis_label(covariate)) +
-    ggplot2::coord_quickmap() +
+    # coord_sf(), not coord_quickmap(): geom_sf() refuses to draw under anything
+    # else, and refuses at draw time rather than when the plot is built - so the
+    # failure survives a ggplot_build() check and surfaces in the app.
+    ggplot2::coord_sf(xlim = range(frame$lon), ylim = range(frame$lat),
+                      default_crs = 4326) +
     ggplot2::labs(title = paste0(covariate_label(covariate), " - ",
                                  month.name[month], " ", year),
                   subtitle = if (nrow(missing) > 0) {

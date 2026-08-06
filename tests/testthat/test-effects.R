@@ -221,3 +221,26 @@ test_that("without fancygam the run still gets its generic curves", {
   expect_true("partial_effects.png" %in% written)
   expect_true("smooth_terms.csv" %in% written)
 })
+
+test_that("maps draw, not just build", {
+  skip_on_cran()
+  # geom_sf() refuses to work under any coord but coord_sf(), and refuses when
+  # the grobs are made rather than when the plot is assembled. ggplot_build()
+  # passes and the app shows an error, so these have to be drawn to a device.
+  config <- mock_config()
+  generate_mock_zoop_data(config)
+  dat <- load_zoop_data(config)
+  env <- fetch_covariates(config, years = 2018, months = 6)
+
+  drawn <- function(plot) {
+    file <- tempfile(fileext = ".png")
+    grDevices::png(file, width = 500, height = 400)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    print(plot)
+    TRUE
+  }
+
+  expect_true(drawn(plot_station_map(dat)))
+  expect_true(drawn(plot_covariate_map(env, "SST", 2018, 6)))
+  expect_true(drawn(plot_station_series(dat)))
+})

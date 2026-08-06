@@ -521,9 +521,13 @@ plot_station_map <- function(dat, transform = c("log1p", "none"), path = NULL) {
     coastline_layer(dat) +
     ggplot2::geom_point(size = 1.4, alpha = 0.8) +
     ggplot2::scale_colour_viridis_c(option = "magma", name = legend) +
-    # Latitude and longitude are not the same distance, and a map drawn as if
-    # they were misrepresents where things are relative to each other.
-    ggplot2::coord_quickmap() +
+    # coord_sf() rather than coord_quickmap(): geom_sf() refuses to draw under
+    # anything else, and the refusal comes at draw time rather than when the
+    # plot is built, so it survives a ggplot_build() check and fails in the
+    # app. Both give a sensible aspect for lon/lat; only one of them coexists
+    # with a coastline.
+    ggplot2::coord_sf(xlim = range(dat$lon), ylim = range(dat$lat),
+                      default_crs = 4326) +
     ggplot2::labs(x = NULL, y = NULL) +
     ggplot2::theme_minimal()
 

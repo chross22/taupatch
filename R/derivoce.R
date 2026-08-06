@@ -127,7 +127,7 @@ derivoce_covariates <- function() {
     ),
     ftle = list(
       label = "Finite-time Lyapunov exponent",
-      units = "1/day",
+      units = "day^-1 (a rate)",
       description = paste(
         "Stretching rate of the flow over a fixed window. Backward (the default)",
         "finds attracting structures, where water converges and material",
@@ -141,7 +141,7 @@ derivoce_covariates <- function() {
     ),
     fsle = list(
       label = "Finite-size Lyapunov exponent",
-      units = "1/day",
+      units = "day^-1 (a rate)",
       description = paste(
         "Like the FTLE, but timed to a fixed separation rather than integrated for",
         "a fixed window, so structures of a chosen size are resolved consistently."
