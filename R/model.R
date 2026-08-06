@@ -56,16 +56,118 @@ fit_patch_model <- function(dat, config) {
   fitted <- parsnip::fit(wf, data = model_data)
 
   predictions <- tune::collect_predictions(resampled)
+  cutoff <- optimal_threshold(predictions)
 
   list(
     workflow = fitted,
     metrics = cv_metrics,
+    evaluation = evaluation_table(predictions, cv_metrics, cutoff),
     predictions = predictions,
-    classification_threshold = optimal_threshold(predictions),
+    classification_threshold = cutoff,
     importance = extract_importance(fitted),
     predictors = predictors,
     threshold = attr(dat, "threshold")
   )
+}
+
+#' Assemble a self-explanatory evaluation table
+#'
+#' The cross-validated metrics table reports sensitivity, specificity and kappa
+#' at the default 0.5 cutoff without saying so anywhere. That is badly misleading
+#' when the classes are imbalanced — and they are here by construction, since a
+#' 90th-percentile abundance threshold makes only a tenth of stations patches. At
+#' 0.5 a random forest calls almost nothing a patch, so sensitivity reads as poor
+#' when the model is not.
+#'
+#' This states the cutoff each metric belongs to, and reports the
+#' threshold-dependent ones twice: at 0.5, and at the cutoff that maximises TSS.
+#' Threshold-free metrics carry `NA` in that column, which is the honest entry —
+#' they do not have one.
+#'
+#' @param predictions held-out predictions from resampling
+#' @param cv_metrics the `tune::collect_metrics()` result, with TSS added
+#' @param cutoff the TSS-maximising cutoff
+#' @return a data frame with `metric`, `threshold`, `value`, `std_err`, and
+#'   `note` columns
+#' @keywords internal
+evaluation_table <- function(predictions, cv_metrics, cutoff) {
+  threshold_free <- c("roc_auc", "pr_auc")
+
+  ranking <- data.frame(
+    metric = threshold_free,
+    threshold = NA_real_,
+    value = c(
+      value_or_na(cv_metrics, "roc_auc"),
+      yardstick::pr_auc(predictions, truth = "patch", ".pred_patch")$.estimate
+    ),
+    std_err = c(std_err_or_na(cv_metrics, "roc_auc"), NA_real_),
+    note = "ranking quality; does not depend on a cutoff",
+    stringsAsFactors = FALSE
+  )
+
+  at_default <- metrics_at(predictions, 0.5)
+  at_default$std_err <- vapply(at_default$metric, function(m) std_err_or_na(cv_metrics, m),
+                                numeric(1))
+  at_default$note <- "default cutoff; usually poor when classes are imbalanced"
+
+  at_best <- metrics_at(predictions, cutoff)
+  at_best$std_err <- NA_real_
+  at_best$note <- "TSS-optimal cutoff; use this one to binarise a projection"
+
+  out <- rbind(ranking, at_default, at_best)
+  rownames(out) <- NULL
+  out
+}
+
+#' Threshold-dependent metrics at one cutoff
+#'
+#' Computed from the pooled held-out predictions rather than per fold, so these
+#' have no standard error — the fold structure is used up by the pooling.
+#'
+#' @param predictions held-out predictions from resampling
+#' @param cutoff probability at or above which a cell is called a patch
+#' @return a data frame of `metric`, `threshold`, `value`
+#' @keywords internal
+metrics_at <- function(predictions, cutoff) {
+  if (is.na(cutoff)) {
+    return(data.frame(metric = character(), threshold = numeric(),
+                      value = numeric(), stringsAsFactors = FALSE))
+  }
+  called <- predictions$.pred_patch >= cutoff
+  is_patch <- predictions$patch == "patch"
+
+  sens <- sum(called & is_patch) / sum(is_patch)
+  spec <- sum(!called & !is_patch) / sum(!is_patch)
+  precision <- if (sum(called) > 0) sum(called & is_patch) / sum(called) else NA_real_
+
+  data.frame(
+    metric = c("sens", "spec", "tss", "precision"),
+    threshold = cutoff,
+    value = c(sens, spec, sens + spec - 1, precision),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Pull one metric's mean from a collect_metrics() table
+#'
+#' @param cv_metrics a metrics table
+#' @param metric the metric name
+#' @return the mean, or `NA_real_` if absent
+#' @keywords internal
+value_or_na <- function(cv_metrics, metric) {
+  value <- cv_metrics$mean[cv_metrics$.metric == metric]
+  if (length(value) == 1) value else NA_real_
+}
+
+#' Pull one metric's standard error from a collect_metrics() table
+#'
+#' @param cv_metrics a metrics table
+#' @param metric the metric name
+#' @return the standard error, or `NA_real_` if absent
+#' @keywords internal
+std_err_or_na <- function(cv_metrics, metric) {
+  value <- cv_metrics$std_err[cv_metrics$.metric == metric]
+  if (length(value) == 1) value else NA_real_
 }
 
 #' Probability cutoff that maximises TSS

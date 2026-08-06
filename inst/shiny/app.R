@@ -186,7 +186,12 @@ ui <- fluidPage(
                    "Copernicus variable and dataset it comes from."),
                  uiOutput("covariate_reference")),
         tabPanel("Results", br(),
-                 h4("Cross-validated performance"), tableOutput("metrics"),
+                 h4("Cross-validated performance"),
+                 helpText("Threshold-dependent metrics are shown at both the",
+                          "default 0.5 cutoff and the cutoff that maximises TSS.",
+                          "With only a tenth of stations patches, 0.5 calls",
+                          "almost nothing a patch and understates the model."),
+                 tableOutput("metrics"),
                  h4("Variable importance"), plotOutput("importance", height = "300px"),
                  h4("Threshold"), verbatimTextOutput("threshold")),
         tabPanel("Diagnostics", br(),
@@ -429,9 +434,19 @@ server <- function(input, output, session) {
 
   output$metrics <- renderTable({
     req(run_result())
-    metrics <- run_result()$model$metrics
-    data.frame(Metric = metrics$.metric, Mean = round(metrics$mean, 4),
-               Folds = metrics$n)
+    evaluation <- run_result()$model$evaluation
+    data.frame(
+      Metric = evaluation$metric,
+      # A blank cutoff reads better than NA for metrics that genuinely have
+      # none, and keeps the eye on the two that do.
+      Cutoff = ifelse(is.na(evaluation$threshold), "",
+                      format(round(evaluation$threshold, 3), nsmall = 3)),
+      Value = round(evaluation$value, 3),
+      `Std. err` = ifelse(is.na(evaluation$std_err), "",
+                          format(round(evaluation$std_err, 4), nsmall = 4)),
+      Note = evaluation$note,
+      check.names = FALSE
+    )
   })
 
   output$importance <- renderPlot({

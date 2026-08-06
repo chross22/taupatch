@@ -89,7 +89,12 @@ write_model_outputs <- function(model, config) {
   dir.create(out, recursive = TRUE, showWarnings = FALSE)
 
   saveRDS(model$workflow, file.path(out, "model.rds"))
-  readr::write_csv(model$metrics, file.path(out, "evals.csv"))
+  # evals.csv states the cutoff each metric belongs to, and reports the
+  # threshold-dependent ones at both 0.5 and the TSS-optimal cutoff. The raw
+  # resampling table is kept alongside for anything that wants the per-fold
+  # structure.
+  readr::write_csv(model$evaluation, file.path(out, "evals.csv"))
+  readr::write_csv(model$metrics, file.path(out, "cv_metrics.csv"))
   readr::write_csv(model$importance, file.path(out, "var_importance.csv"))
   plot_importance(model$importance, file.path(out, "var_importance.png"))
   write_diagnostic_plots(model$predictions, out)

@@ -53,7 +53,7 @@ config$paths$output_dir <- file.path(tempdir(), "out")
 generate_mock_zoop_data(config)
 
 result <- run_taupatch(config)
-result$model$metrics      # cross-validated ROC AUC, kappa, sensitivity, specificity, TSS
+result$model$evaluation   # performance, with the cutoff each metric belongs to
 result$model$importance   # permutation variable importance
 result$projections        # one GeoTIFF + PNG per projected month
 ```
@@ -254,13 +254,48 @@ run the model. Tabs:
   show up as blank cells
 - **Log** — stage-by-stage output from the run
 
+### Reading the evaluation
+
+`evals.csv` names the cutoff each metric belongs to, because the answer changes
+a lot with it:
+
+| metric | threshold | value |
+|---|---|---|
+| roc_auc | | 0.876 |
+| pr_auc | | 0.433 |
+| sens | 0.500 | 0.261 |
+| spec | 0.500 | 0.977 |
+| tss | 0.500 | 0.238 |
+| sens | 0.074 | 0.870 |
+| spec | 0.074 | 0.767 |
+| tss | 0.074 | 0.637 |
+
+Two things this makes visible that a single-column table hides:
+
+- **0.5 is the wrong cutoff here.** With only a tenth of stations patches, a
+  random forest at 0.5 calls almost nothing a patch — sensitivity 0.26 against
+  0.87 at the TSS-optimal cutoff. The model is far better than the default
+  numbers suggest. Use `classification_threshold` from `threshold.yaml` when
+  binarising a projection, which is what the original was reaching for with
+  biomod2's `metric.binary = 'ROC'`.
+- **ROC AUC flatters an imbalanced problem.** 0.876 looks strong, but PR AUC is
+  0.433 — because ROC's false-positive rate has the large non-patch class in its
+  denominator. Precision is the question a patch map actually poses, and the
+  trade-off is real: moving to the optimal cutoff raises sensitivity to 0.87 but
+  drops precision to 0.30.
+
+`diagnostics/` holds the curves these come from, and `cv_predictions.csv` the
+held-out predictions, so any metric not tabulated here can be computed without
+refitting.
+
 ## Outputs
 
 Each run writes to `paths.output_dir`:
 
 ```
 model.rds              fitted tidymodels workflow
-evals.csv              cross-validated ROC AUC, kappa, sensitivity, specificity, TSS
+evals.csv              performance, stating the cutoff each metric belongs to
+cv_metrics.csv         the raw per-fold resampling table
 var_importance.csv     permutation variable importance
 var_importance.png
 threshold.yaml         the abundance threshold actually used

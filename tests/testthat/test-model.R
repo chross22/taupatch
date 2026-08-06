@@ -136,3 +136,82 @@ test_that("diagnostic plots refuse to draw without predictions", {
   expect_error(plot_pr_curve(data.frame()), "No held-out predictions")
   expect_error(plot_calibration(data.frame(x = 1)), "Expected a '.pred_patch'")
 })
+
+test_that("the evaluation table states which cutoff each metric belongs to", {
+  skip_if_not_installed("ranger")
+
+  config <- mock_config()
+  model <- fit_patch_model(labeled_mock_data(config), config)
+  evaluation <- model$evaluation
+
+  expect_setequal(names(evaluation),
+                  c("metric", "threshold", "value", "std_err", "note"))
+
+  # Ranking metrics have no cutoff, and saying NA is the honest entry.
+  expect_true(all(is.na(evaluation$threshold[evaluation$metric %in%
+                                               c("roc_auc", "pr_auc")])))
+  # Everything else must name one.
+  threshold_dependent <- evaluation$metric %in% c("sens", "spec", "tss", "precision")
+  expect_false(any(is.na(evaluation$threshold[threshold_dependent])))
+})
+
+test_that("threshold-dependent metrics are reported at both cutoffs", {
+  skip_if_not_installed("ranger")
+
+  config <- mock_config()
+  model <- fit_patch_model(labeled_mock_data(config), config)
+  evaluation <- model$evaluation
+
+  cutoffs <- sort(unique(evaluation$threshold[!is.na(evaluation$threshold)]))
+  expect_length(cutoffs, 2)
+  expect_true(0.5 %in% cutoffs)
+  expect_true(model$classification_threshold %in% cutoffs)
+
+  # Each of the four appears once per cutoff.
+  for (metric in c("sens", "spec", "tss", "precision")) {
+    expect_equal(sum(evaluation$metric == metric), 2, info = metric)
+  }
+})
+
+test_that("the optimal cutoff beats 0.5 on TSS, which is the point of showing both", {
+  skip_if_not_installed("ranger")
+
+  config <- mock_config()
+  model <- fit_patch_model(labeled_mock_data(config), config)
+  evaluation <- model$evaluation
+
+  tss <- evaluation[evaluation$metric == "tss", ]
+  at_default <- tss$value[tss$threshold == 0.5]
+  at_best <- tss$value[tss$threshold != 0.5]
+
+  expect_gte(at_best, at_default)
+
+  # And sensitivity is the metric the default understates: at 0.5 a random
+  # forest calls almost nothing a patch when a tenth of stations are patches.
+  sens <- evaluation[evaluation$metric == "sens", ]
+  expect_gt(sens$value[sens$threshold != 0.5], sens$value[sens$threshold == 0.5])
+})
+
+test_that("metrics_at computes sensitivity and specificity directly", {
+  predictions <- data.frame(
+    .pred_patch = c(0.9, 0.8, 0.2, 0.1, 0.7),
+    patch = factor(c("patch", "patch", "non_patch", "non_patch", "non_patch"),
+                   levels = c("patch", "non_patch"))
+  )
+
+  at_half <- metrics_at(predictions, 0.5)
+
+  # Both patches are above 0.5, so sensitivity is 1. One of three non-patches
+  # is above it, so specificity is 2/3.
+  expect_equal(at_half$value[at_half$metric == "sens"], 1)
+  expect_equal(at_half$value[at_half$metric == "spec"], 2 / 3)
+  expect_equal(at_half$value[at_half$metric == "tss"], 2 / 3)
+  # Three cells called patch, two of them real.
+  expect_equal(at_half$value[at_half$metric == "precision"], 2 / 3)
+})
+
+test_that("an uncomputable cutoff yields no threshold-dependent rows", {
+  predictions <- data.frame(.pred_patch = numeric(), patch = factor())
+
+  expect_equal(nrow(metrics_at(predictions, NA_real_)), 0)
+})
