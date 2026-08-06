@@ -35,26 +35,62 @@ fit_patch_model <- function(dat, config) {
   folds <- rsample::vfold_cv(model_data, v = config$model$cv_folds, strata = "patch")
   metrics <- patch_metric_set()
 
+  # Predictions are retained so an ROC curve can be drawn from held-out folds.
+  # Without this, only the summary metrics survive resampling and the curve
+  # would have to be redrawn on training data, which flatters the model.
+  control <- tune::control_resamples(save_pred = TRUE)
+
   if (isTRUE(config$model$tune)) {
     tuned <- tune::tune_grid(wf, resamples = folds, grid = config$model$tune_grid %||% 10,
                              metrics = metrics)
     best <- tune::select_best(tuned, metric = "roc_auc")
     wf <- tune::finalize_workflow(wf, best)
-    resampled <- tune::fit_resamples(wf, resamples = folds, metrics = metrics)
+    resampled <- tune::fit_resamples(wf, resamples = folds, metrics = metrics,
+                                     control = control)
   } else {
-    resampled <- tune::fit_resamples(wf, resamples = folds, metrics = metrics)
+    resampled <- tune::fit_resamples(wf, resamples = folds, metrics = metrics,
+                                     control = control)
   }
 
   cv_metrics <- add_tss(tune::collect_metrics(resampled))
   fitted <- parsnip::fit(wf, data = model_data)
 
+  predictions <- tune::collect_predictions(resampled)
+
   list(
     workflow = fitted,
     metrics = cv_metrics,
+    predictions = predictions,
+    classification_threshold = optimal_threshold(predictions),
     importance = extract_importance(fitted),
     predictors = predictors,
     threshold = attr(dat, "threshold")
   )
+}
+
+#' Probability cutoff that maximises TSS
+#'
+#' The metrics table reports sensitivity and specificity at the default 0.5
+#' cutoff, which is rarely right when the classes are imbalanced — and they are
+#' here by construction, since a 90th-percentile abundance threshold makes only
+#' 10% of stations patches. At 0.5 a random forest will call almost nothing a
+#' patch, so sensitivity looks far worse than the model can actually achieve.
+#'
+#' This is the cutoff the original pipeline was reaching for with
+#' `metric.binary = 'ROC'` when it binarised its projections.
+#'
+#' @param predictions held-out predictions from resampling
+#' @return the TSS-maximising cutoff, or `NA_real_` if it cannot be computed
+#' @keywords internal
+optimal_threshold <- function(predictions) {
+  if (is.null(predictions) || !".pred_patch" %in% names(predictions)) {
+    return(NA_real_)
+  }
+  curve <- yardstick::roc_curve(predictions, truth = "patch", ".pred_patch")
+  curve <- curve[is.finite(curve$.threshold), ]
+  if (nrow(curve) == 0) return(NA_real_)
+
+  curve$.threshold[which.max(curve$sensitivity + curve$specificity - 1)]
 }
 
 #' Build the preprocessing recipe

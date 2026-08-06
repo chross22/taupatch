@@ -10,3 +10,15 @@ mock_config <- function(dir = tempfile("taupatch")) {
   config$paths$output_dir <- file.path(dir, "output")
   config
 }
+
+# Modeling data as fit_patch_model() expects it: stations with covariates
+# attached and patches labeled. Runs the same path the pipeline does, so tests
+# exercise real data rather than a hand-built frame that might drift from it.
+labeled_mock_data <- function(config = mock_config()) {
+  generate_mock_zoop_data(config)
+  dat <- load_zoop_data(config)
+  env_dat <- fetch_covariates(config)
+  dat <- attach_covariates(dat, env_dat, config)
+  dat <- add_derived_covariates(dat, config)
+  label_patch(dat, config)
+}

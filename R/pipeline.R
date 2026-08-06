@@ -92,6 +92,7 @@ write_model_outputs <- function(model, config) {
   readr::write_csv(model$metrics, file.path(out, "evals.csv"))
   readr::write_csv(model$importance, file.path(out, "var_importance.csv"))
   plot_importance(model$importance, file.path(out, "var_importance.png"))
+  write_diagnostic_plots(model$predictions, out)
 
   # Record the computed threshold alongside the run, so a percentile-based run is
   # reproducible as an absolute one. The original wrote this back into the config
@@ -100,9 +101,38 @@ write_model_outputs <- function(model, config) {
     paste0("species: ", config$species$resolved$name, "\n",
            "threshold_type: ", config$species$resolved$threshold$type, "\n",
            "threshold_value: ", config$species$resolved$threshold$value, "\n",
-           "threshold_computed: ", model$threshold),
+           "threshold_computed: ", model$threshold, "\n",
+           "# Probability cutoff maximising TSS on held-out folds. The metrics\n",
+           "# in evals.csv are at the default 0.5, which is rarely optimal when\n",
+           "# only a tenth of stations are patches.\n",
+           "classification_threshold: ", model$classification_threshold),
     file.path(out, "threshold.yaml")
   )
+  invisible(NULL)
+}
+
+#' Write model diagnostic plots
+#'
+#' All four are drawn from held-out cross-validation predictions, so they describe
+#' performance on data the model did not see. The predictions themselves are saved
+#' alongside, so a diagnostic not covered here can be produced without refitting.
+#'
+#' @param predictions the `predictions` element of a `fit_patch_model()` result
+#' @param out the run's output directory
+#' @return `NULL`, invisibly
+#' @keywords internal
+write_diagnostic_plots <- function(predictions, out) {
+  if (is.null(predictions) || nrow(predictions) == 0) return(invisible(NULL))
+
+  diagnostics <- file.path(out, "diagnostics")
+  dir.create(diagnostics, recursive = TRUE, showWarnings = FALSE)
+
+  readr::write_csv(predictions, file.path(diagnostics, "cv_predictions.csv"))
+  plot_roc_curve(predictions, file.path(diagnostics, "roc_curve.png"))
+  plot_pr_curve(predictions, file.path(diagnostics, "pr_curve.png"))
+  plot_calibration(predictions, path = file.path(diagnostics, "calibration.png"))
+  plot_threshold_performance(predictions,
+                             file.path(diagnostics, "threshold_performance.png"))
   invisible(NULL)
 }
 

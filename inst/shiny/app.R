@@ -189,6 +189,19 @@ ui <- fluidPage(
                  h4("Cross-validated performance"), tableOutput("metrics"),
                  h4("Variable importance"), plotOutput("importance", height = "300px"),
                  h4("Threshold"), verbatimTextOutput("threshold")),
+        tabPanel("Diagnostics", br(),
+                 p("Drawn from held-out cross-validation folds, so these describe",
+                   "performance on data the model did not see."),
+                 uiOutput("diagnostic_note"),
+                 fluidRow(
+                   column(6, plotOutput("roc_plot", height = "380px")),
+                   column(6, plotOutput("pr_plot", height = "380px"))
+                 ),
+                 br(),
+                 fluidRow(
+                   column(6, plotOutput("calibration_plot", height = "380px")),
+                   column(6, plotOutput("threshold_plot", height = "380px"))
+                 )),
         tabPanel("Maps", br(),
                  uiOutput("map_controls"),
                  leaflet::leafletOutput("map", height = "600px")),
@@ -515,6 +528,29 @@ server <- function(input, output, session) {
       class = "control-label"
     )
   })
+
+  diagnostic_predictions <- reactive({
+    req(run_result())
+    run_result()$model$predictions
+  })
+
+  output$diagnostic_note <- renderUI({
+    if (is.null(run_result())) {
+      return(helpText("Run a model first - diagnostics appear here once it finishes."))
+    }
+    cutoff <- run_result()$model$classification_threshold
+    if (is.na(cutoff)) return(NULL)
+    # Surfaced because the metrics table reports sens/spec at 0.5, which for a
+    # tenth-prevalence problem understates what the model can do.
+    helpText(sprintf(
+      "TSS is maximised at a probability cutoff of %.3f. The Results tab's
+       sensitivity and specificity are at the default 0.5.", cutoff))
+  })
+
+  output$roc_plot <- renderPlot(plot_roc_curve(diagnostic_predictions()))
+  output$pr_plot <- renderPlot(plot_pr_curve(diagnostic_predictions()))
+  output$calibration_plot <- renderPlot(plot_calibration(diagnostic_predictions()))
+  output$threshold_plot <- renderPlot(plot_threshold_performance(diagnostic_predictions()))
 
   output$heatmap_controls <- renderUI({
     if (is.null(run_result())) {
