@@ -89,7 +89,7 @@ fetch_covariates_copernicus <- function(config, years, months) {
   target <- spacing[ordering][1]
   upsampled <- unlist(lapply(seq_along(per_dataset), function(i) {
     if (spacing[ordering][i] <= target) return(NULL)
-    covariate_names(per_dataset[[i]])
+    datamatch::covariate_columns(per_dataset[[i]])
   }))
   attr(joined, "upsampled") <- upsampled
 
@@ -132,25 +132,16 @@ NULL
 
 #' Grid spacing of a covariate source, in degrees
 #'
-#' Measured from one time step's unique coordinates, since every step repeats
-#' the same grid.
+#' The measurement is [datamatch::grid_resolution()], which owns it; this reduces
+#' its per-axis answer to the single number the join needs, the coarser of the
+#' two. A grid finer in one direction than the other is still limited by its
+#' coarse direction, so that is what decides which source is the finer of two.
 #'
 #' @param env_dat an `sf` POINT object from `datamatch::accessEnvDat()`
 #' @return the coarser of the longitude and latitude spacings
 #' @keywords internal
 grid_spacing <- function(env_dat) {
-  first <- env_dat[env_dat$YEAR == env_dat$YEAR[1] &
-                     env_dat$MONTH == env_dat$MONTH[1] &
-                     env_dat$DAY == env_dat$DAY[1], ]
-  coords <- sf::st_coordinates(first)
-
-  step <- function(values) {
-    unique_values <- sort(unique(values))
-    if (length(unique_values) < 2) return(NA_real_)
-    min(diff(unique_values))
-  }
-
-  max(step(coords[, 1]), step(coords[, 2]), na.rm = TRUE)
+  max(datamatch::grid_resolution(env_dat), na.rm = TRUE)
 }
 
 #' Copernicus fetch specifications for a config
@@ -176,7 +167,7 @@ covariate_specs <- function(config) {
 #' @return `x` with `y`'s variable columns joined on nearest point and date
 #' @keywords internal
 join_covariate_sources <- function(x, y) {
-  y_vars <- setdiff(names(y), c("YEAR", "MONTH", "DAY", attr(y, "sf_column")))
+  y_vars <- datamatch::covariate_columns(y)
 
   # Joined one time step at a time. A single spatial join across the whole
   # stack matches on geometry alone, and because every time step repeats the
@@ -265,7 +256,7 @@ attach_covariates <- function(dat, env_dat, config) {
          "Install it with remotes::install_github('chross22/datamatch').", call. = FALSE)
   }
 
-  vars <- covariate_names(env_dat)
+  vars <- datamatch::covariate_columns(env_dat)
   stations <- sf::st_as_sf(dat, coords = c("lon", "lat"), crs = sf::st_crs(4326),
                            remove = FALSE)
 
@@ -291,15 +282,6 @@ drop_missing <- function(dat, cols) {
   dat[stats::complete.cases(dat[cols]), ]
 }
 
-#' Covariate variable names in a covariate object
-#'
-#' @param env_dat an `sf` POINT covariate object
-#' @return character vector of variable column names
-#' @keywords internal
-covariate_names <- function(env_dat) {
-  setdiff(names(env_dat), c("YEAR", "MONTH", "DAY", attr(env_dat, "sf_column")))
-}
-
 #' Average each covariate over the study area, per month and year
 #'
 #' Collapses the covariate grid to one value per (year, month, covariate) — the
@@ -312,7 +294,7 @@ covariate_names <- function(env_dat) {
 #' @return a data frame with `year`, `month`, `covariate`, and `mean` columns
 #' @export
 covariate_monthly_means <- function(env_dat, vars = NULL) {
-  vars <- vars %||% covariate_names(env_dat)
+  vars <- vars %||% datamatch::covariate_columns(env_dat)
   flat <- sf::st_drop_geometry(env_dat)
 
   means <- lapply(vars, function(v) {

@@ -146,6 +146,21 @@ test_that("grid_spacing measures a source's resolution", {
 
   expect_equal(grid_spacing(sources$fine), 0.25)
   expect_equal(grid_spacing(sources$coarse), 0.5)
+
+  # The measurement itself is datamatch's; this reduces its per-axis answer to
+  # the coarser of the two, which is what decides which source a join lands on.
+  expect_equal(grid_spacing(sources$fine),
+               max(datamatch::grid_resolution(sources$fine)))
+})
+
+test_that("a grid coarser in one direction is measured by that direction", {
+  # Two products can differ on one axis only, and the coarse axis is what
+  # limits the grid - so it is what has to decide which of two is finer.
+  g <- expand.grid(x = seq(-70, -69, by = 0.5), y = seq(42, 43, by = 0.1))
+  g$SST <- 10; g$YEAR <- 2020; g$MONTH <- 1L; g$DAY <- 1L
+  stretched <- sf::st_as_sf(g, coords = c("x", "y"), crs = 4326)
+
+  expect_equal(grid_spacing(stretched), 0.5)
 })
 
 test_that("a source missing a time step yields NA rather than dropping rows", {

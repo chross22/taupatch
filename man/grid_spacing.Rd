@@ -13,7 +13,9 @@ grid_spacing(env_dat)
 the coarser of the longitude and latitude spacings
 }
 \description{
-Measured from one time step's unique coordinates, since every step repeats
-the same grid.
+The measurement is \code{\link[datamatch:grid_resolution]{datamatch::grid_resolution()}}, which owns it; this reduces
+its per-axis answer to the single number the join needs, the coarser of the
+two. A grid finer in one direction than the other is still limited by its
+coarse direction, so that is what decides which source is the finer of two.
 }
 \keyword{internal}
