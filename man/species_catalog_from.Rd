@@ -7,7 +7,7 @@
 species_catalog_from(
   header,
   suffix = "_10M2",
-  stage_pattern = "_(C(?:I{1,3}|IV|VI?))$",
+  stage_pattern = stage_suffix_pattern(),
   threshold = list(type = "percentile", value = 0.9),
   aliases = NULL
 )

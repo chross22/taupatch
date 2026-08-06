@@ -11,7 +11,7 @@ plot_projection <- function(predicted, year, month, species, path) {
   p <- ggplot2::ggplot(predicted, ggplot2::aes(x = .data$lon, y = .data$lat,
                                                 fill = .data$suitability)) +
     ggplot2::geom_raster() +
-    ggplot2::scale_fill_viridis_c(option = "inferno", limits = c(0, 1),
+    ggplot2::scale_fill_viridis_c(option = "magma", limits = c(0, 1),
                                    na.value = "white", name = "P(patch)") +
     ggplot2::coord_quickmap() +
     ggplot2::labs(title = paste0(species, " - ", month.name[month], " ", year),
@@ -47,7 +47,7 @@ projection_map <- function(geotiff, opacity = 0.8) {
   # fail to set a view - leaving leaflet with no center or zoom, so it requests
   # no tiles and positions no overlay, and the map renders as a blank grey box.
   extent <- unname(as.vector(terra::ext(rast)))  # xmin, xmax, ymin, ymax
-  palette <- leaflet::colorNumeric("inferno", domain = c(0, 1), na.color = "transparent")
+  palette <- leaflet::colorNumeric("magma", domain = c(0, 1), na.color = "transparent")
 
   leaflet::leaflet() |>
     leaflet::addProviderTiles("CartoDB.Positron") |>
@@ -88,7 +88,7 @@ plot_covariate_heatmap <- function(means, covariate = NULL, path = NULL) {
   p <- ggplot2::ggplot(subset, ggplot2::aes(x = .data$year, y = .data$month_label,
                                              fill = .data$mean)) +
     ggplot2::geom_tile(colour = "white", linewidth = 0.4) +
-    ggplot2::scale_fill_viridis_c(option = "viridis", name = legend_title) +
+    ggplot2::scale_fill_viridis_c(option = "magma", name = legend_title) +
     ggplot2::labs(title = covariate_label(covariate), x = NULL, y = NULL) +
     ggplot2::theme_minimal() +
     ggplot2::theme(panel.grid = ggplot2::element_blank(),
@@ -519,7 +519,7 @@ plot_station_map <- function(dat, transform = c("log1p", "none"), path = NULL) {
   p <- ggplot2::ggplot(dat, ggplot2::aes(x = .data$lon, y = .data$lat,
                                           colour = .data$value)) +
     ggplot2::geom_point(size = 1.4, alpha = 0.8) +
-    ggplot2::scale_colour_viridis_c(option = "viridis", name = legend) +
+    ggplot2::scale_colour_viridis_c(option = "magma", name = legend) +
     # Latitude and longitude are not the same distance, and a map drawn as if
     # they were misrepresents where things are relative to each other.
     ggplot2::coord_quickmap() +

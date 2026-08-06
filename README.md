@@ -76,7 +76,7 @@ Derived covariates (`covariates.derivoce`) additionally need:
 remotes::install_github("chross22/derivoce")
 ```
 
-The Shiny app additionally needs `shiny` and `leaflet`.
+The Shiny app additionally needs `shiny`, `leaflet`, and `shinyFiles`.
 
 ## Try it without any data
 

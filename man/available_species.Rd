@@ -6,7 +6,7 @@
 \usage{
 available_species(
   zoop_file,
-  stage_pattern = "_(C(?:I{1,3}|IV|VI?))$",
+  stage_pattern = stage_suffix_pattern(),
   exclude = measurement_columns()
 )
 }
@@ -20,8 +20,8 @@ measurements the ECOMON export carries, which are numeric columns that are
 not taxa; pass \code{character()} to see them.}
 }
 \value{
-a data frame of \code{species}, \code{form} (\code{"total"} or \code{"stages"}), and
-\code{stages}, one row per candidate
+a data frame of \code{species} (the column header name), \code{shorthand},
+\code{form} (\code{"total"} or \code{"stages"}), and \code{stages}, one row per candidate
 }
 \description{
 The config's species catalog names the taxa a run was set up for. A formatted

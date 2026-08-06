@@ -93,6 +93,154 @@ parse_dates <- function(values, formats) {
        "\nPass the right format via the `formats` argument.", call. = FALSE)
 }
 
+#' The suffix marking a life stage on a taxon column
+#'
+#' A `C` and a Roman numeral is the core of it, but the databases in use carry
+#' four more forms: a bare `C` for unstaged copepodites, `adult`, a combination
+#' spanning two stages (`CV_VI`, `CI_IV`), and `total`. All of them are suffixes
+#' on a taxon name, and a rule that recognised only the first would split one
+#' taxon into several species - `cfin_CV_VI` read as an animal called
+#' "cfin_CV_VI" rather than as some of cfin.
+#'
+#' Matched without regard to case, because the databases disagree: the raw export
+#' is upper case throughout, while `original/create_database.R` writes a lower
+#' case taxon with an upper case stage.
+#'
+#' @return a regular expression with one capture group, the suffix
+#' @examples
+#' grepl(stage_suffix_pattern(), "cfin_CV", ignore.case = TRUE)
+#' @export
+stage_suffix_pattern <- function() {
+  roman <- "I{1,3}|IV|VI?"
+  paste0("_(C(?:", roman, ")?(?:_C?(?:", roman, "))?|adult|total)$")
+}
+
+#' Conventional shorthand for a taxon name
+#'
+#' The genus initial and the first three letters of the species epithet, lower
+#' case. `CALANUS_FINMARCHICUS` gives `cfin` and `CENTROPAGES_TYPICUS` gives
+#' `ctyp`. A name with no epithet uses its first four letters.
+#'
+#' `Pseudocalanus` is the one exception, and is listed rather than derived: its
+#' conventional shorthand is `pcal`, from the `calanus` inside the genus name,
+#' which the rule above cannot produce.
+#'
+#' The column header remains the identity - it is what the data carries, and it
+#' is matched without regard to case. This is only what a config says out loud as
+#' `active:` and what the app shows in its picker.
+#'
+#' Two taxa can collide: `CALANUS_FINMARCHICUS` and a hypothetical
+#' `CALANUS_FINLANDICUS` both give `cfin`. That is reported rather than resolved,
+#' since a name invented to break the tie would be a name nobody uses.
+#'
+#' @param taxon taxon names, as they appear in the column header
+#' @return character vector of shorthands, one per input
+#' @examples
+#' taxon_shorthand(c("CALANUS_FINMARCHICUS", "CENTROPAGES_TYPICUS",
+#'                   "PSEUDOCALANUS_SPP", "METRIDIA_LUCENS"))
+#' @export
+taxon_shorthand <- function(taxon) {
+  # Pseudocalanus is pcal by convention, taken from the `calanus` inside the
+  # genus rather than from the epithet. The rule below cannot produce it, so it
+  # is listed.
+  exceptions <- c(pseudocalanus = "pcal")
+
+  short <- vapply(taxon, function(one) {
+    parts <- strsplit(tolower(one), "_", fixed = TRUE)[[1]]
+    parts <- parts[nzchar(parts)]
+    if (length(parts) == 0) return(tolower(one))
+
+    known <- exceptions[parts[1]]
+    if (!is.na(known)) return(unname(known))
+
+    if (length(parts) == 1) return(substr(parts[1], 1, 4))
+    paste0(substr(parts[1], 1, 1), substr(parts[2], 1, 3))
+  }, character(1), USE.NAMES = FALSE)
+
+  # One shorthand for two animals means a config naming it reaches whichever
+  # came first in the catalog, silently. OITHONA_SPP and ONCAEA_SPP are the pair
+  # this happens to in the ECOMON header: both give `ospp` on the rule above.
+  # Three letters of the genus tells them apart - `oitspp` and `oncspp`.
+  distinct <- !duplicated(tolower(taxon))
+  for (one in unique(short[distinct][duplicated(short[distinct])])) {
+    at <- which(short == one)
+
+    # Three letters of the genus rather than one, then more if that is still not
+    # enough. A single-word name has no epithet to draw on, so it just gets
+    # longer: PSEUDOCALANIDAE and PSEUDODIAPTOMIDAE separate at the seventh
+    # letter.
+    resolved <- NULL
+    for (extra in 0:12) {
+      candidate <- vapply(taxon[at], function(name) {
+        parts <- strsplit(tolower(name), "_", fixed = TRUE)[[1]]
+        parts <- parts[nzchar(parts)]
+        if (length(parts) == 1) return(substr(parts[1], 1, 6 + extra))
+        paste0(substr(parts[1], 1, 3 + extra), substr(parts[2], 1, 3))
+      }, character(1), USE.NAMES = FALSE)
+
+      if (!anyDuplicated(candidate[!duplicated(tolower(taxon[at]))])) {
+        resolved <- candidate
+        break
+      }
+    }
+
+    if (is.null(resolved)) {
+      warning("More than one taxon shortens to '", one, "': ",
+              paste(unique(taxon[at]), collapse = ", "),
+              "\nNo shortening separates them. Give them explicit keys with ",
+              "the `aliases` argument.", call. = FALSE)
+      next
+    }
+    short[at] <- resolved
+  }
+  short
+}
+
+#' Whether a header is a raw export rather than a station database
+#'
+#' A raw export names its coordinates `LATITUDE`/`LONGITUDE` and carries one
+#' `DATE`; a station database uses `lat`/`lon` and separate year, month and day.
+#' The two are told apart by that alone, which is enough to know whether a file
+#' needs [format_zoop_data()] run over it first.
+#'
+#' @param header column names, or a path to a CSV to read them from
+#' @return `TRUE` when the file looks like a raw export
+#' @examples
+#' is_raw_export(c("STATION", "LATITUDE", "LONGITUDE", "DATE"))
+#' is_raw_export(c("station", "lat", "lon", "year", "month", "day"))
+#' @export
+is_raw_export <- function(header) {
+  if (length(header) == 1 && file.exists(header)) {
+    header <- names(readr::read_csv(header, n_max = 0, show_col_types = FALSE,
+                                     progress = FALSE))
+  }
+  all(c("LATITUDE", "LONGITUDE", "DATE") %in% header) &&
+    !any(c("lat", "lon", "year", "month", "day") %in% header)
+}
+
+#' The count and the unit a suffix encodes
+#'
+#' `_10M2` is not a unit, it is a count and a unit: animals per ten square
+#' metres. Splitting them is what lets abundance be reported per one of
+#' something, which is the form anyone comparing two surveys needs.
+#'
+#' @param suffix a units suffix, with or without its leading underscore
+#' @return `list(per=, unit=)`, the number the values are counted over and the
+#'   unit that remains. `per` is 1 when the suffix carries no number.
+#' @examples
+#' abundance_units("_10M2")
+#' abundance_units("_100M3")
+#' @export
+abundance_units <- function(suffix) {
+  bare <- sub("^_", "", suffix)
+  number <- regmatches(bare, regexpr("^[0-9]*\\.?[0-9]+", bare))
+
+  list(
+    per = if (length(number) == 1) as.numeric(number) else 1,
+    unit = toupper(sub("^[0-9]*\\.?[0-9]+", "", bare))
+  )
+}
+
 #' Taxon columns in a raw zooplankton export
 #'
 #' The export names every taxon column for the taxon and the units it is
@@ -111,13 +259,14 @@ parse_dates <- function(values, formats) {
 #' @param stage_pattern regular expression matching a stage on the end of a
 #'   taxon name. The default is a `C` followed by a Roman numeral one to six.
 #' @return a data frame with one row per taxon column: `column` as found,
-#'   `taxon`, `stage` (`NA` when the column is a total), and `name`, the column
-#'   the formatted database will carry
+#'   `taxon`, `shorthand`, `stage` (`NA` when the column is a total), `name` (the
+#'   column the formatted database will carry), and the `per`/`unit` the counts
+#'   are reported in
 #' @examples
 #' zoop_taxa(c("CALANUS_FINMARCHICUS_10M2", "CALANUS_FINMARCHICUS_CV_10M2"))
 #' @export
 zoop_taxa <- function(header, suffix = "_10M2",
-                      stage_pattern = "_(C(?:I{1,3}|IV|VI?))$") {
+                      stage_pattern = stage_suffix_pattern()) {
   if (length(header) == 1 && file.exists(header)) {
     header <- names(readr::read_csv(header, n_max = 0, show_col_types = FALSE,
                                      progress = FALSE))
@@ -131,20 +280,37 @@ zoop_taxa <- function(header, suffix = "_10M2",
   }
 
   bare <- sub(paste0(suffix, "$"), "", columns)
-  staged <- grepl(stage_pattern, bare)
+  staged <- grepl(stage_pattern, bare, ignore.case = TRUE)
 
-  taxon <- ifelse(staged, sub(stage_pattern, "", bare), bare)
-  stage <- ifelse(staged, sub(paste0("^.*", stage_pattern), "\\1", bare),
+  taxon <- ifelse(staged, sub(stage_pattern, "", bare, ignore.case = TRUE), bare)
+  found <- ifelse(staged,
+                  sub(paste0("^.*", stage_pattern), "\\1", bare, ignore.case = TRUE),
                   NA_character_)
+
+  # `total` is a suffix that identifies the taxon but is not a stage: the column
+  # is that taxon's total, which is what a stage-less column already is.
+  is_total <- !is.na(found) & tolower(found) == "total"
+  # Upper case, so the codes line up with single_stages() whichever case the
+  # database wrote them in.
+  stage <- ifelse(is_total, NA_character_, toupper(found))
+
+  units <- abundance_units(suffix)
+  warn_mixed_units(header, suffix)
 
   out <- data.frame(
     column = columns,
     taxon = taxon,
+    shorthand = taxon_shorthand(taxon),
     stage = stage,
     # A staged column keeps the stage on the end, because that is what the
     # `column_prefix` + `stages` machinery matches: it looks for columns
     # beginning "<prefix>_". A total carries the taxon name alone.
-    name = ifelse(staged, paste0(taxon, "_", stage), taxon),
+    # The suffix is kept whatever it was, including `total`, so two columns of
+    # one taxon never collapse onto one name.
+    name = ifelse(staged, paste0(taxon, "_", ifelse(is_total, found, stage)),
+                  taxon),
+    per = units$per,
+    unit = units$unit,
     stringsAsFactors = FALSE
   )
 
@@ -171,23 +337,35 @@ warn_ambiguous_taxa <- function(taxa, stage_pattern) {
     clashing <- taxa$column[taxa$name %in% duplicated_names]
     stop("These columns resolve to the same name: ",
          paste(clashing, collapse = ", "),
-         "
-They would overwrite one another. Rename them in the source file, ",
+         "\nThey would overwrite one another. Rename them in the source file, ",
          "or pass a `suffix`/`stage_pattern` that tells them apart.",
          call. = FALSE)
   }
 
-  # A stage marker somewhere other than the end was not read as the stage, so
-  # the column has been treated as a total. Combination stages are how this
-  # usually happens: CALANUS_FINMARCHICUS_CV_VI is neither CV nor a total.
-  inner <- grepl("_C(?:I{1,3}|IV|VI?)(?:_|$)", taxa$taxon, perl = TRUE)
+  # A stage marker somewhere other than the end of the name could not be
+  # separated from the taxon, so the column has been read as a total.
+  inner <- grepl("_C(?:I{1,3}|IV|VI?)_(?!C?(?:I{1,3}|IV|VI?)$)", taxa$taxon,
+                 perl = TRUE, ignore.case = TRUE)
   if (any(inner)) {
     warning("Read as totals, but the name contains a stage marker: ",
             paste(taxa$column[inner], collapse = ", "),
-            "
-A combination stage such as CV_VI is neither a single stage nor ",
-            "a total. Check what these columns hold before modelling them.",
+            "\nThe stage was not on the end of the name, so it could not be ",
+            "told apart from the taxon. Check what these columns hold.",
             call. = FALSE)
+  }
+
+  # Two spellings of one taxon are two species to everything downstream, and
+  # the difference is easy to miss in an alphabetically sorted dropdown.
+  folded <- tolower(taxa$taxon)
+  for (one in unique(folded[duplicated(folded)])) {
+    spellings <- unique(taxa$taxon[folded == one])
+    if (length(spellings) > 1) {
+      warning("One taxon spelled more than one way: ",
+              paste(spellings, collapse = ", "),
+              "\nStages are matched without regard to case, but the taxon name ",
+              "is kept as written, so these appear as separate species.",
+              call. = FALSE)
+    }
   }
 
   # `column_prefix` matches "<prefix>_", so a taxon whose name prefixes another
@@ -199,8 +377,7 @@ A combination stage such as CV_VI is neither a single stage nor ",
   if (any(shadowed)) {
     warning("These taxon names are prefixes of others: ",
             paste(unique_taxa[shadowed], collapse = ", "),
-            "
-A config using column_prefix for one would also match the ",
+            "\nA config using column_prefix for one would also match the ",
             "other's columns. Use abundance_column for them, or rename.",
             call. = FALSE)
   }
@@ -223,6 +400,19 @@ A config using column_prefix for one would also match the ",
 #' the bare name, which a config reaches through `abundance_column`.
 #' [species_catalog_from()] picks the right one per taxon.
 #'
+#' @section Units:
+#' The suffix is a count and a unit, not just a unit: `_10M2` is animals per ten
+#' square metres. The values are divided through by the number, so what comes out
+#' is per one of whatever remains - per square metre for the ECOMON export. The
+#' unit is recorded on the result as an `abundance_unit` attribute rather than
+#' kept in the column names, which are then the names of animals and nothing
+#' else.
+#'
+#' This changes the numbers. An absolute threshold written against the raw
+#' counts will be ten times too large once they are per square metre; a
+#' percentile threshold is unaffected, since dividing every value by the same
+#' number does not move a quantile.
+#'
 #' @section What it keeps:
 #' Everything. Taxon columns are renamed, the date and coordinate columns are
 #' converted, and every other column in the file is carried through untouched.
@@ -243,7 +433,8 @@ A config using column_prefix for one would also match the ",
 #' @param longitude,latitude the coordinate columns
 #' @param write_to optional path to write the result to as CSV
 #' @return a tibble with `station`, `year`, `month`, `day`, `lon`, `lat`, one
-#'   column per taxon or taxon-stage, and every other column the file carried
+#'   column per taxon or taxon-stage, the original date column, and every other
+#'   column the file carried
 #' @examples
 #' raw <- data.frame(
 #'   STATION = 1:2, DATE = c("05-JAN-03", "17-JUN-11"),
@@ -256,7 +447,7 @@ A config using column_prefix for one would also match the ",
 #' @seealso [split_dates()], [zoop_taxa()], [species_catalog_from()]
 #' @export
 format_zoop_data <- function(path, suffix = "_10M2",
-                             stage_pattern = "_(C(?:I{1,3}|IV|VI?))$",
+                             stage_pattern = stage_suffix_pattern(),
                              date_column = "DATE",
                              longitude = "LONGITUDE", latitude = "LATITUDE",
                              write_to = NULL) {
@@ -279,7 +470,22 @@ format_zoop_data <- function(path, suffix = "_10M2",
          call. = FALSE)
   }
 
-  out <- split_dates(raw, column = date_column)
+  # Reported per ten square metres, or per whatever the suffix says. Divided
+  # through so the values are per one of it, which is the only form in which two
+  # surveys counted over different areas can be compared.
+  units <- abundance_units(suffix)
+  if (units$per != 1) {
+    message("Dividing abundances by ", units$per, ": ", suffix, " -> per ",
+            units$unit)
+    for (column in taxa$column) {
+      raw[[column]] <- raw[[column]] / units$per
+    }
+  }
+
+  # Kept, not consumed. The date is the only column that says what a station
+  # actually recorded; year, month and day are a convenience derived from it,
+  # and throwing the original away makes the derivation unverifiable.
+  out <- split_dates(raw, column = date_column, keep = TRUE)
   names(out)[match(longitude, names(out))] <- "lon"
   names(out)[match(latitude, names(out))] <- "lat"
   names(out)[match(taxa$column, names(out))] <- taxa$name
@@ -294,6 +500,9 @@ format_zoop_data <- function(path, suffix = "_10M2",
   out <- out[c(leading, taxa$name,
                setdiff(names(out), c(leading, taxa$name)))]
   out <- tibble::as_tibble(out)
+  # Recorded rather than encoded in the column names, so the names stay the
+  # names of animals.
+  attr(out, "abundance_unit") <- units$unit
 
   if (!is.null(write_to)) {
     dir.create(dirname(write_to), recursive = TRUE, showWarnings = FALSE)
@@ -336,7 +545,7 @@ format_zoop_data <- function(path, suffix = "_10M2",
 #' @seealso [format_zoop_data()], [generate_config()]
 #' @export
 species_catalog_from <- function(header, suffix = "_10M2",
-                                 stage_pattern = "_(C(?:I{1,3}|IV|VI?))$",
+                                 stage_pattern = stage_suffix_pattern(),
                                  threshold = list(type = "percentile",
                                                   value = 0.9),
                                  aliases = NULL) {
@@ -345,7 +554,9 @@ species_catalog_from <- function(header, suffix = "_10M2",
   if (nrow(taxa) == 0) return(list())
 
   unique_taxa <- unique(taxa$taxon)
-  keys <- stats::setNames(unique_taxa, unique_taxa)
+  # Keyed by the conventional shorthand, pointing at the column header name.
+  # The header stays the identity; the key is only what a config says out loud.
+  keys <- stats::setNames(unique_taxa, taxon_shorthand(unique_taxa))
 
   if (!is.null(aliases)) {
     unknown <- setdiff(unname(aliases), unique_taxa)
@@ -392,8 +603,8 @@ species_catalog_from <- function(header, suffix = "_10M2",
 #' @param exclude columns to leave out. The default drops the in-situ
 #'   measurements the ECOMON export carries, which are numeric columns that are
 #'   not taxa; pass `character()` to see them.
-#' @return a data frame of `species`, `form` (`"total"` or `"stages"`), and
-#'   `stages`, one row per candidate
+#' @return a data frame of `species` (the column header name), `shorthand`,
+#'   `form` (`"total"` or `"stages"`), and `stages`, one row per candidate
 #' @examples
 #' available_species(c("station", "year", "month", "day", "lon", "lat",
 #'                     "CALANUS_FINMARCHICUS", "PSEUDOCALANUS_SPP_CIV",
@@ -401,7 +612,7 @@ species_catalog_from <- function(header, suffix = "_10M2",
 #' @seealso [zoop_taxa()], [species_catalog_from()]
 #' @export
 available_species <- function(zoop_file,
-                              stage_pattern = "_(C(?:I{1,3}|IV|VI?))$",
+                              stage_pattern = stage_suffix_pattern(),
                               exclude = measurement_columns()) {
   header <- if (length(zoop_file) == 1 && file.exists(zoop_file)) {
     names(readr::read_csv(zoop_file, n_max = 0, show_col_types = FALSE,
@@ -410,27 +621,64 @@ available_species <- function(zoop_file,
     zoop_file
   }
 
+  # DATE is kept by format_zoop_data() as the source of year/month/day, so it
+  # is in a formatted file and is not an animal.
+  # A raw export says outright which columns are taxa: they are the ones ending
+  # in a count and a unit. Nothing else is, whatever it is called. Use that
+  # rather than guessing, since guessing is what puts DATE and STATION in a list
+  # of animals.
+  if (is_raw_export(header)) {
+    taxa <- zoop_taxa(header, suffix = raw_abundance_suffix(header),
+                      stage_pattern = stage_pattern)
+    if (nrow(taxa) == 0) {
+      return(data.frame(species = character(), shorthand = character(),
+                        form = character(), stages = character(),
+                        stringsAsFactors = FALSE))
+    }
+    out <- do.call(rbind, lapply(unique(taxa$taxon), function(one) {
+      stages <- stats::na.omit(taxa$stage[taxa$taxon == one])
+      data.frame(species = one,
+                 shorthand = taxon_shorthand(one),
+                 form = if (length(stages) > 0) "stages" else "total",
+                 stages = paste(stages, collapse = ", "),
+                 stringsAsFactors = FALSE)
+    }))
+    return(out[order(out$species), ])
+  }
+
+  # A formatted database has had the suffix cut off, so the rule above is gone
+  # and only the exclusions are left.
   structural <- c("station", "year", "month", "day", "lon", "lat", "dataset",
-                  "jday", "abundance", "patch", "TIME")
+                  "jday", "abundance", "patch", "TIME", "DATE", "date")
   candidates <- setdiff(header, c(structural, exclude))
   if (length(candidates) == 0) {
     return(data.frame(species = character(), form = character(),
                       stages = character(), stringsAsFactors = FALSE))
   }
 
-  staged <- grepl(stage_pattern, candidates)
-  taxon <- ifelse(staged, sub(stage_pattern, "", candidates), candidates)
-  stage <- ifelse(staged, sub(paste0("^.*", stage_pattern), "\\1", candidates), NA)
+  staged <- grepl(stage_pattern, candidates, ignore.case = TRUE)
+  taxon <- ifelse(staged, sub(stage_pattern, "", candidates, ignore.case = TRUE),
+                  candidates)
+  found <- ifelse(staged,
+                  sub(paste0("^.*", stage_pattern), "\\1", candidates,
+                      ignore.case = TRUE),
+                  NA_character_)
+  # A total is the taxon, not one of its stages, so it groups the columns
+  # without being offered as something to select.
+  stage <- ifelse(!is.na(found) & tolower(found) == "total", NA_character_,
+                  toupper(found))
 
   out <- do.call(rbind, lapply(unique(taxon), function(one) {
     stages <- stats::na.omit(stage[taxon == one])
     data.frame(
       species = one,
+      shorthand = taxon_shorthand(one),
       form = if (length(stages) > 0) "stages" else "total",
       stages = paste(stages, collapse = ", "),
       stringsAsFactors = FALSE
     )
   }))
+  out$shorthand <- taxon_shorthand(out$species)
   out[order(out$species), ]
 }
 
@@ -457,4 +705,61 @@ measurement_columns <- function() {
   c("CRUISE_NAME", "EVENT_PK_SEQ", "NET_PK_SEQ", "ZOO_GEAR", "TOW_PROTOCOL",
     "TOW_PROFILE", "SORT_TYPE", "STATION_DEPTH", "SFC_TMEP", "SFC_TEMP",
     "SFC_SALT", "BTM_TEMP", "BTM_SALT", "BIO_VOLUME_1M2")
+}
+
+#' Warn when a header carries more than one abundance unit
+#'
+#' Only columns ending in the chosen suffix are read as taxa, so a column
+#' reported in some other unit is not converted, not renamed, and not modelled.
+#' It is carried through as though it were a measurement, which looks exactly
+#' like a taxon that simply was not counted.
+#'
+#' Worth catching for a second reason. Per square metre is an areal density,
+#' integrated through the water column; per cubic metre is a concentration at
+#' depth. Dividing each by its own number puts both "per one", but per m2 and
+#' per m3 remain different quantities, and one cannot be turned into the other
+#' without knowing the depth the tow integrated over. Two surveys reported in the
+#' two units cannot be pooled on the strength of both saying "per one".
+#'
+#' @param header the file's column names
+#' @param suffix the suffix being read as taxa
+#' @return `NULL`, invisibly; warns when others are present
+#' @keywords internal
+warn_mixed_units <- function(header, suffix) {
+  # Anything ending in a count and a metre unit is an abundance column.
+  others <- grep("_[0-9]*\\.?[0-9]*M[23]$", header, value = TRUE,
+                 ignore.case = TRUE)
+  others <- others[!grepl(paste0(suffix, "$"), others, ignore.case = TRUE)]
+  if (length(others) == 0) return(invisible(NULL))
+
+  found <- unique(sub("^.*(_[0-9]*\\.?[0-9]*M[23])$", "\\1", others,
+                      ignore.case = TRUE))
+  warning("Columns in other units were not read as taxa: ",
+          paste(utils::head(others, 4), collapse = ", "),
+          if (length(others) > 4) ", ..." else "",
+          "\nReading '", suffix, "', but the file also has ",
+          paste(found, collapse = ", "),
+          ".\nRun format_zoop_data() once per unit. Per m2 and per m3 are not ",
+          "interconvertible without the depth the tow integrated over, so the ",
+          "two cannot be pooled.", call. = FALSE)
+  invisible(NULL)
+}
+
+#' The abundance suffix a raw export uses
+#'
+#' Read off the header rather than assumed, so a file counting per 100 cubic
+#' metres is handled without being told. The most common suffix wins when a file
+#' carries more than one, which `warn_mixed_units()` reports separately.
+#'
+#' @param header the file's column names
+#' @return the suffix, including its leading underscore; `"_10M2"` when the
+#'   header has none, since that is what the ECOMON export uses
+#' @examples
+#' raw_abundance_suffix(c("STATION", "CALANUS_FINMARCHICUS_100M3"))
+#' @export
+raw_abundance_suffix <- function(header) {
+  found <- regmatches(header, regexpr("_[0-9]*\\.?[0-9]*M[23]$", header,
+                                      ignore.case = TRUE))
+  if (length(found) == 0) return("_10M2")
+  names(sort(table(toupper(found)), decreasing = TRUE))[1]
 }

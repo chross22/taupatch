@@ -4,7 +4,7 @@
 \alias{zoop_taxa}
 \title{Taxon columns in a raw zooplankton export}
 \usage{
-zoop_taxa(header, suffix = "_10M2", stage_pattern = "_(C(?:I{1,3}|IV|VI?))$")
+zoop_taxa(header, suffix = "_10M2", stage_pattern = stage_suffix_pattern())
 }
 \arguments{
 \item{header}{column names, or a path to a CSV to read them from}
@@ -16,8 +16,9 @@ taxon name. The default is a \code{C} followed by a Roman numeral one to six.}
 }
 \value{
 a data frame with one row per taxon column: \code{column} as found,
-\code{taxon}, \code{stage} (\code{NA} when the column is a total), and \code{name}, the column
-the formatted database will carry
+\code{taxon}, \code{shorthand}, \code{stage} (\code{NA} when the column is a total), \code{name} (the
+column the formatted database will carry), and the \code{per}/\code{unit} the counts
+are reported in
 }
 \description{
 The export names every taxon column for the taxon and the units it is

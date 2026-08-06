@@ -190,11 +190,9 @@ ui <- fluidPage(
         "Data",
         textInput("zoop_path", "Path to a CSV on this machine",
                   value = "", placeholder = "data/zooplankton_database.csv"),
-        if (requireNamespace("shinyFiles", quietly = TRUE)) {
-          shinyFiles::shinyFilesButton("zoop_browse", "Browse...",
-                                       title = "Choose a zooplankton CSV",
-                                       multiple = FALSE, class = "btn-sm")
-        },
+        shinyFiles::shinyFilesButton("zoop_browse", "Browse...",
+                                     title = "Choose a zooplankton CSV",
+                                     multiple = FALSE, class = "btn-sm"),
         div(style = "height: 8px;"),
         uiOutput("data_status")
       ),
@@ -446,57 +444,85 @@ server <- function(input, output, session) {
   # Every taxon the loaded file carries, not only the ones the config was set
   # up for. A formatted export holds the whole survey.
   file_species <- reactive({
-    if (!file.exists(zoop_path())) {
-      return(data.frame(species = character(), form = character(),
-                        stages = character(), stringsAsFactors = FALSE))
+    # Read from the raw file when there is one: it names its taxa by their
+    # units, which is exact, where a formatted file can only be guessed at.
+    source_path <- if (isTRUE(formatted_zoop()$formatted)) {
+      zoop_input()
+    } else {
+      zoop_path()
     }
-    tryCatch(available_species(zoop_path()),
+    if (!file.exists(source_path)) {
+      return(data.frame(species = character(), shorthand = character(),
+                        form = character(), stages = character(),
+                        stringsAsFactors = FALSE))
+    }
+    tryCatch(available_species(source_path),
              error = function(e) data.frame(species = character(),
+                                            shorthand = character(),
                                             form = character(),
                                             stages = character(),
                                             stringsAsFactors = FALSE))
   })
 
   observe({
+    found <- file_species()
     catalog <- names(base_config$species$catalog)
-    from_file <- setdiff(file_species()$species, catalog)
 
-    # The three the model is normally run on first, everything else the file
-    # carries behind them. selectize makes the long tail searchable, which is
-    # the only way ninety taxa are usable in a dropdown.
-    choices <- if (length(from_file) > 0) {
-      list(Common = catalog, `Other taxa in this file` = sort(from_file))
+    # Labelled with the full header name, valued by the shorthand, so the
+    # dropdown reads as "cfin - CALANUS_FINMARCHICUS" and is searchable by
+    # either. selectize makes the long tail usable; ninety taxa are not.
+    if (nrow(found) > 0) {
+      from_file <- stats::setNames(found$shorthand,
+                                   paste0(found$shorthand, " - ", found$species))
+      common <- from_file[found$shorthand %in% catalog]
+      rest <- from_file[!(found$shorthand %in% catalog)]
+      choices <- if (length(common) > 0) {
+        list(Common = common, `Other taxa in this file` = rest[order(names(rest))])
+      } else {
+        from_file[order(names(from_file))]
+      }
+      available <- unname(from_file)
     } else {
-      catalog
+      choices <- catalog
+      available <- catalog
     }
+
     selected <- isolate(input$species) %||% base_config$species$active
-    if (!(selected %in% c(catalog, from_file))) selected <- catalog[1]
+    if (!(selected %in% available)) selected <- available[1]
 
     updateSelectInput(session, "species", choices = choices, selected = selected)
   })
 
-  # A species named by the config keeps its catalog entry. One found only in the
-  # file gets an entry built for it, in whichever form its columns support.
+  # The file wins over the config. Both may know a `cfin`, and they can mean
+  # different columns: the shipped catalog expects `cfin_*` stage columns, while
+  # a formatted export calls the same animal CALANUS_FINMARCHICUS. Preferring the
+  # catalog there would look up a prefix the loaded file does not have.
   species_entry <- reactive({
     req(input$species)
-    known <- base_config$species$catalog[[input$species]]
-    if (!is.null(known)) return(known)
+    threshold <- list(type = input$threshold_type, value = input$threshold_value)
 
     found <- file_species()
-    row <- found[found$species == input$species, ]
-    threshold <- list(type = input$threshold_type,
-                      value = input$threshold_value)
+    row <- found[found$shorthand == input$species |
+                   found$species == input$species, ]
 
-    if (nrow(row) == 1 && identical(row$form, "stages")) {
-      list(column_prefix = input$species, threshold = threshold)
-    } else {
-      list(abundance_column = input$species, threshold = threshold)
+    if (nrow(row) >= 1) {
+      column <- row$species[1]
+      entry <- if (identical(row$form[1], "stages")) {
+        list(column_prefix = column)
+      } else {
+        list(abundance_column = column)
+      }
+      return(c(entry, list(threshold = threshold)))
     }
+
+    known <- base_config$species$catalog[[input$species]]
+    if (!is.null(known)) return(known)
+    list(abundance_column = input$species, threshold = threshold)
   })
 
   species_prefix <- reactive({
     entry <- species_entry()
-    entry$column_prefix %||% input$species
+    entry$column_prefix %||% entry$abundance_column %||% input$species
   })
 
   # The uploaded file when there is one, otherwise whatever the launching config
@@ -506,29 +532,49 @@ server <- function(input, output, session) {
   # Browsing the machine the app is running on, which locally is this one. The
   # button fills the path box rather than being a second source of truth, so
   # everything downstream still reads one place.
-  if (requireNamespace("shinyFiles", quietly = TRUE)) {
-    volumes <- c("Working directory" = getwd(),
-                 Home = path.expand("~"),
-                 shinyFiles::getVolumes()())
-    shinyFiles::shinyFileChoose(input, "zoop_browse", roots = volumes,
-                                filetypes = c("csv", "CSV"))
-    observeEvent(input$zoop_browse, {
-      chosen <- shinyFiles::parseFilePaths(volumes, input$zoop_browse)
-      if (nrow(chosen) > 0) {
-        updateTextInput(session, "zoop_path",
-                        value = as.character(chosen$datapath[1]))
-      }
-    }, ignoreInit = TRUE)
-  }
+  volumes <- c("Working directory" = getwd(),
+               Home = path.expand("~"),
+               shinyFiles::getVolumes()())
+  shinyFiles::shinyFileChoose(input, "zoop_browse", roots = volumes,
+                              filetypes = c("csv", "CSV"))
+  observeEvent(input$zoop_browse, {
+    chosen <- shinyFiles::parseFilePaths(volumes, input$zoop_browse)
+    if (nrow(chosen) > 0) {
+      updateTextInput(session, "zoop_path",
+                      value = as.character(chosen$datapath[1]))
+    }
+  }, ignoreInit = TRUE)
 
   # A path rather than a browser upload. The station database is read where it
   # already is, which keeps a downloaded config usable afterwards - an uploaded
   # copy would live in a per-session temporary directory and be gone tomorrow.
-  zoop_path <- reactive({
+  zoop_input <- reactive({
     typed <- trimws(input$zoop_path %||% "")
     if (!nzchar(typed)) return(base_config$paths$zoop_file)
     if (is_absolute(typed)) typed else file.path(getwd(), typed)
   })
+
+  # A raw export is converted here rather than handed back with instructions.
+  # It is the same call the documentation gives, run for you: the point of
+  # pointing an app at a file is not to be told to go and run something first.
+  # The result goes to a temporary file, so the original is never written to.
+  formatted_zoop <- reactive({
+    path <- zoop_input()
+    if (!file.exists(path) || !is_raw_export(path)) {
+      return(list(path = path, formatted = FALSE, error = NULL))
+    }
+
+    out <- file.path(tempdir(), paste0("taupatch_formatted_", basename(path)))
+    result <- tryCatch({
+      suppressWarnings(format_zoop_data(path, write_to = out))
+      list(path = out, formatted = TRUE, error = NULL)
+    }, error = function(e) {
+      list(path = path, formatted = FALSE, error = conditionMessage(e))
+    })
+    result
+  })
+
+  zoop_path <- reactive(formatted_zoop()$path)
 
   zoop_source <- reactive({
     if (nzchar(trimws(input$zoop_path %||% ""))) "path" else "default"
@@ -538,9 +584,10 @@ server <- function(input, output, session) {
     req(input$species)
     if (!file.exists(zoop_path())) return(character())
     found <- file_species()
-    row <- found[found$species == input$species, ]
+    row <- found[found$shorthand == input$species |
+                   found$species == input$species, ]
     # Only a taxon whose columns carry stages has any to offer.
-    if (nrow(row) == 1 && !identical(row$form, "stages")) return(character())
+    if (nrow(row) >= 1 && !identical(row$form[1], "stages")) return(character())
     tryCatch(available_stages(zoop_path(), species_prefix()),
              error = function(e) character())
   })
@@ -576,10 +623,21 @@ server <- function(input, output, session) {
                  strong("Could not read that file as CSV.")))
     }
 
+    prepared <- formatted_zoop()
+    if (!is.null(prepared$error)) {
+      return(tagList(
+        div(strong(basename(zoop_input())), " - raw export"),
+        div(class = "text-danger", style = "font-size: 12px; margin-top: 6px;",
+            strong("Could not format it: "), prepared$error)
+      ))
+    }
+
+    # The assembled config, not base_config. They differ in exactly the way that
+    # matters here: current_config() drops the ECOMON filter when the loaded file
+    # has no `dataset` column, and validating the shipped config instead reports
+    # a missing column that the run itself would never have asked for.
     check <- tryCatch({
-      config <- base_config
-      config$paths$zoop_file <- zoop_path()
-      validate_columns(config)
+      validate_columns(current_config())
       NULL
     }, error = function(e) conditionMessage(e))
 
@@ -593,7 +651,14 @@ server <- function(input, output, session) {
     ]
 
     tagList(
-      div(strong(basename(zoop_path())), " - ", length(header), " columns"),
+      div(strong(basename(zoop_input())), " - ", length(header), " columns"),
+      if (isTRUE(prepared$formatted)) {
+        helpText(class = "text-success",
+                 "Recognised as a raw export and formatted for this run.",
+                 "Dates split, taxon columns renamed, abundances divided",
+                 "through by the count their unit is per. The file on disk is",
+                 "untouched.")
+      },
       if (!is.null(check)) {
         div(class = "text-danger", style = "font-size: 12px; margin-top: 6px;",
             strong("Not usable yet: "), check)

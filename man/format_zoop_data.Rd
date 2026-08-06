@@ -7,7 +7,7 @@
 format_zoop_data(
   path,
   suffix = "_10M2",
-  stage_pattern = "_(C(?:I{1,3}|IV|VI?))$",
+  stage_pattern = stage_suffix_pattern(),
   date_column = "DATE",
   longitude = "LONGITUDE",
   latitude = "LATITUDE",
@@ -29,7 +29,8 @@ format_zoop_data(
 }
 \value{
 a tibble with \code{station}, \code{year}, \code{month}, \code{day}, \code{lon}, \code{lat}, one
-column per taxon or taxon-stage, and every other column the file carried
+column per taxon or taxon-stage, the original date column, and every other
+column the file carried
 }
 \description{
 The raw export is not the shape the rest of this package reads. It carries one
@@ -45,6 +46,21 @@ rather than assuming. A taxon column carrying a stage keeps it —
 match in a config. A taxon column without one is that taxon's total and keeps
 the bare name, which a config reaches through \code{abundance_column}.
 \code{\link[=species_catalog_from]{species_catalog_from()}} picks the right one per taxon.
+}
+
+\section{Units}{
+
+The suffix is a count and a unit, not just a unit: \verb{_10M2} is animals per ten
+square metres. The values are divided through by the number, so what comes out
+is per one of whatever remains - per square metre for the ECOMON export. The
+unit is recorded on the result as an \code{abundance_unit} attribute rather than
+kept in the column names, which are then the names of animals and nothing
+else.
+
+This changes the numbers. An absolute threshold written against the raw
+counts will be ten times too large once they are per square metre; a
+percentile threshold is unaffected, since dividing every value by the same
+number does not move a quantile.
 }
 
 \section{What it keeps}{

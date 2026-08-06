@@ -134,7 +134,8 @@ test_that("a raw export is reshaped into what the pipeline reads", {
 
   # Taxa named for the animal, with the units cut off.
   expect_true(all(c("CALANUS_FINMARCHICUS", "CENTROPAGES_TYPICUS") %in% names(out)))
-  expect_equal(out$CALANUS_FINMARCHICUS, c(1200, 340))
+  # Divided by ten, since the export counts per 10 m2.
+  expect_equal(out$CALANUS_FINMARCHICUS, c(120, 34))
   expect_false(any(grepl("10M2", names(out))))
 })
 
@@ -161,8 +162,7 @@ test_that("the formatted database loads back through the pipeline", {
   config$dates$years <- c(2003, 2011)
   config$dates$months <- c(1, 12)
   config$study_area$bbox <- list(xmin = -71, xmax = -69, ymin = 42, ymax = 44)
-  config$species$catalog <- species_catalog_from(names(raw_export()),
-                                                  aliases = c(cfin = "CALANUS_FINMARCHICUS"))
+  config$species$catalog <- species_catalog_from(names(raw_export()))
   config$species$active <- "cfin"
   config$species$resolved <- resolve_species(config)
 
@@ -170,21 +170,21 @@ test_that("the formatted database loads back through the pipeline", {
   expect_true(validate_columns(config))
   dat <- load_zoop_data(config)
   expect_equal(nrow(dat), 2)
-  expect_equal(sort(dat$abundance), c(340, 1200))
+  # Divided by ten on the way in: the export counts per 10 m2.
+  expect_equal(sort(dat$abundance), c(34, 120))
 })
 
 test_that("the catalog form follows whether the dataset resolves stages", {
   unstaged <- species_catalog_from(names(raw_export()))
-  # A total-only taxon has no prefix for anything to match.
-  expect_equal(unstaged$CALANUS_FINMARCHICUS$abundance_column,
-               "CALANUS_FINMARCHICUS")
-  expect_null(unstaged$CALANUS_FINMARCHICUS$column_prefix)
+  # Keyed by shorthand, pointing at the column header name.
+  expect_equal(unstaged$cfin$abundance_column, "CALANUS_FINMARCHICUS")
+  expect_null(unstaged$cfin$column_prefix)
 
   staged <- species_catalog_from(names(raw_export(staged = TRUE)))
-  expect_equal(staged$PSEUDOCALANUS_SPP$column_prefix, "PSEUDOCALANUS_SPP")
-  expect_null(staged$PSEUDOCALANUS_SPP$abundance_column)
+  expect_equal(staged$pcal$column_prefix, "PSEUDOCALANUS_SPP")
+  expect_null(staged$pcal$abundance_column)
   # The unstaged taxa in the same file keep their own form.
-  expect_equal(staged$CENTROPAGES_TYPICUS$abundance_column, "CENTROPAGES_TYPICUS")
+  expect_equal(staged$ctyp$abundance_column, "CENTROPAGES_TYPICUS")
 })
 
 test_that("a staged taxon resolves its stages through the existing machinery", {
@@ -198,22 +198,90 @@ test_that("a staged taxon resolves its stages through the existing machinery", {
   config$paths$zoop_file <- path
   config$columns$dataset_filter <- NULL
   config$species$catalog <- species_catalog_from(names(raw_export(staged = TRUE)))
-  config$species$active <- "PSEUDOCALANUS_SPP"
-  config$species$catalog$PSEUDOCALANUS_SPP$stages <- "CV"
+  config$species$active <- "pcal"
+  config$species$catalog$pcal$stages <- "CV"
   config$species$resolved <- resolve_species(config)
   config$dates$years <- c(2003, 2011); config$dates$months <- c(1, 12)
   config$study_area$bbox <- list(xmin = -71, xmax = -69, ymin = 42, ymax = 44)
 
   dat <- load_zoop_data(config)
-  # Only the requested stage, not the sum of both.
-  expect_setequal(dat$abundance, c(30, 25))
+  # Only the requested stage, not the sum of both, and per m2 rather than
+  # per 10 m2.
+  expect_setequal(dat$abundance, c(3, 2.5))
 })
 
 test_that("aliases must name taxa the file has", {
   expect_error(
-    species_catalog_from(names(raw_export()), aliases = c(cfin = "CALANUS_NOPE")),
+    species_catalog_from(names(raw_export()), aliases = c(cf = "CALANUS_NOPE")),
     "not in the data"
   )
+})
+
+test_that("shorthand is the genus initial and three letters of the epithet", {
+  expect_equal(taxon_shorthand("CALANUS_FINMARCHICUS"), "cfin")
+  expect_equal(taxon_shorthand("CENTROPAGES_TYPICUS"), "ctyp")
+  # Case in the header is not part of the identity.
+  expect_equal(taxon_shorthand("calanus_finmarchicus"), "cfin")
+  # A single-word name has no epithet to take three letters from.
+  expect_equal(taxon_shorthand("CALANIDAE"), "cala")
+})
+
+test_that("a shorthand collision falls back to three letters of the genus", {
+  # Real, in the ECOMON header: OITHONA_SPP and ONCAEA_SPP both give `ospp`.
+  expect_silent(short <- taxon_shorthand(c("OITHONA_SPP", "ONCAEA_SPP")))
+  expect_equal(short, c("oitspp", "oncspp"))
+
+  # Taxa that do not collide are untouched by the rule.
+  expect_equal(taxon_shorthand(c("OITHONA_SPP", "CALANUS_FINMARCHICUS")),
+               c("ospp", "cfin"))
+})
+
+test_that("single-word names lengthen until they separate", {
+  # Real, in the ECOMON header: both give `pseu` on four letters.
+  expect_silent(short <- taxon_shorthand(c("PSEUDOCALANIDAE", "PSEUDODIAPTOMIDAE")))
+  expect_equal(length(unique(short)), 2)
+  expect_true(all(startsWith(short, "pseudo")))
+
+  # Whereas differing epithets never collided in the first place.
+  expect_silent(taxon_shorthand(c("OITHONA_SPP", "OITHONA_SIMILIS")))
+})
+
+test_that("Pseudocalanus keeps its conventional shorthand", {
+  expect_equal(taxon_shorthand("PSEUDOCALANUS_SPP"), "pcal")
+  expect_equal(taxon_shorthand("pseudocalanus_newmani"), "pcal")
+})
+
+test_that("a raw export is told from a station database by its header", {
+  expect_true(is_raw_export(c("STATION", "LATITUDE", "LONGITUDE", "DATE")))
+  expect_false(is_raw_export(c("station", "lat", "lon", "year", "month", "day")))
+})
+
+test_that("abundance is divided by the count its unit is per", {
+  # _10M2 is animals per ten square metres, so per one is a tenth of it.
+  expect_equal(abundance_units("_10M2"), list(per = 10, unit = "M2"))
+  expect_equal(abundance_units("_100M3"), list(per = 100, unit = "M3"))
+  # A unit with no number is already per one.
+  expect_equal(abundance_units("_M2"), list(per = 1, unit = "M2"))
+
+  out <- format_zoop_data(raw_export())
+  expect_equal(out$CALANUS_FINMARCHICUS, c(120, 34))
+  expect_equal(attr(out, "abundance_unit"), "M2")
+})
+
+test_that("a file mixing two abundance units is reported", {
+  # Per m2 is an areal density and per m3 a concentration; only columns in the
+  # chosen unit are read, and the rest would pass silently as measurements.
+  expect_warning(zoop_taxa(c("CALANUS_FINMARCHICUS_10M2", "METRIDIA_LUCENS_100M3")),
+                 "other units")
+})
+
+test_that("the original date column is kept", {
+  out <- format_zoop_data(raw_export())
+
+  # year/month/day are derived from it, and dropping the source would make the
+  # derivation unverifiable.
+  expect_true("DATE" %in% names(out))
+  expect_equal(out$year, c(2003L, 2011L))
 })
 
 test_that("a file with no taxon columns says so", {
@@ -232,15 +300,21 @@ test_that("missing structural columns are reported against what is present", {
   expect_error(format_zoop_data(raw), "Columns present")
 })
 
-test_that("a combination stage is flagged rather than read as a total", {
-  # CALANUS_FINMARCHICUS_CV_VI is neither CV nor a total, and read as a total it
-  # still produces a plausible number - which is why it has to be said out loud.
-  expect_warning(zoop_taxa("CALANUS_FINMARCHICUS_CV_VI_10M2"),
-                 "contains a stage marker")
-  expect_warning(zoop_taxa("CALANUS_FINMARCHICUS_CV_VI_10M2"), "CV_VI")
+test_that("a combination stage belongs to its taxon", {
+  # This used to be read as an animal called CALANUS_FINMARCHICUS_CV_VI, which
+  # split one species across several entries in the picker.
+  taxa <- zoop_taxa("CALANUS_FINMARCHICUS_CV_VI_10M2")
 
-  # A plain stage on the end is read, not warned about.
+  expect_equal(taxa$taxon, "CALANUS_FINMARCHICUS")
+  expect_equal(taxa$stage, "CV_VI")
   expect_silent(zoop_taxa("CALANUS_FINMARCHICUS_CV_10M2"))
+})
+
+test_that("a stage marker stranded mid-name is still flagged", {
+  # Recoverable only when the stage is on the end. Anything else cannot be told
+  # from part of the taxon's own name, so it is reported rather than guessed.
+  expect_warning(zoop_taxa("CALANUS_CV_FINMARCHICUS_10M2"),
+                 "contains a stage marker")
 })
 
 test_that("a taxon name that prefixes another is flagged", {
@@ -267,7 +341,68 @@ test_that("the real export header raises nothing", {
               "PARAEUCHAETA_NORVEGICA_10M2", "EUPHAUSIACEA_10M2",
               "CHAETOGNATHA_10M2", "APPENDICULARIA_10M2")
 
+  # OITHONA_SPP and ONCAEA_SPP both shorten to `ospp`, which is worth a warning
+  # and is not what this test is about.
+  header <- setdiff(header, "ONCAEA_SPP_10M2")
+
   expect_silent(taxa <- zoop_taxa(header))
   expect_equal(nrow(taxa), length(header))
   expect_true(all(is.na(taxa$stage)))
+})
+
+test_that("stage suffixes are recognized whatever case they are written in", {
+  # The raw export is upper case throughout; create_database.R writes a lower
+  # case taxon with an upper case stage. Both are the same animal.
+  expect_equal(zoop_taxa("cfin_CI_10M2")$taxon, "cfin")
+  expect_equal(zoop_taxa("cfin_ci_10M2")$taxon, "cfin")
+  expect_equal(zoop_taxa("CFIN_CI_10M2")$taxon, "CFIN")
+
+  # The stage code is normalized upward so it lines up with single_stages()
+  # regardless of how the database wrote it.
+  expect_equal(zoop_taxa("cfin_ci_10M2")$stage, "CI")
+})
+
+test_that("every stage form the databases use groups under its taxon", {
+  # The bug this fixes: each of these read as an animal of its own, so one
+  # species appeared in the picker seven times under seven names.
+  header <- c("cfin_CI", "cfin_CV", "cfin_CV_VI", "cfin_total",
+              "ctyp_adult", "ctyp_C", "pseudo_CI_IV")
+
+  found <- available_species(header)
+
+  expect_setequal(found$species, c("cfin", "ctyp", "pseudo"))
+  expect_true(all(found$form == "stages"))
+  # A total is that taxon's total rather than one of its stages, so it groups
+  # the columns without being offered as something to select.
+  expect_false(grepl("TOTAL", found$stages[found$species == "cfin"]))
+  expect_true(grepl("CV_VI", found$stages[found$species == "cfin"]))
+  expect_true(grepl("ADULT", found$stages[found$species == "ctyp"]))
+})
+
+test_that("a total and a stage of one taxon do not collide", {
+  taxa <- zoop_taxa(c("cfin_10M2", "cfin_total_10M2", "cfin_CV_10M2"))
+
+  expect_true(all(taxa$taxon == "cfin"))
+  # Three source columns, three distinct destinations.
+  expect_equal(length(unique(taxa$name)), 3)
+  expect_setequal(taxa$name, c("cfin", "cfin_total", "cfin_CV"))
+})
+
+test_that("real taxon names are not mistaken for stages", {
+  # The check that matters: a broader stage rule must not start eating the ends
+  # of ordinary species names.
+  header <- c("CALANUS_FINMARCHICUS", "CALANUS_SPP", "CENTROPAGES_TYPICUS",
+              "CLAUSOCALANUS_ARCUICORNIS", "PARAEUCHAETA_NORVEGICA",
+              "METRIDIA_LUCENS", "TEMORA_LONGICORNIS", "OITHONA_SPP",
+              "CHAETOGNATHA", "APPENDICULARIA")
+
+  found <- available_species(header)
+
+  expect_setequal(found$species, header)
+  expect_true(all(found$form == "total"))
+})
+
+test_that("one taxon spelled two ways is flagged", {
+  expect_warning(zoop_taxa(c("cfin_CI_10M2", "CFIN_CV_10M2")),
+                 "spelled more than one way")
 })

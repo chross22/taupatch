@@ -23,7 +23,10 @@
 #' }
 #' @export
 run_taupatch_app <- function(config_path = NULL, output_dir = NULL, ...) {
-  for (pkg in c("shiny", "leaflet")) {
+  # shinyFiles is required rather than optional. As a Suggests it produced the
+  # worst failure available: the Browse button was simply absent, with nothing
+  # on screen to say why, on any machine whose library happened not to have it.
+  for (pkg in c("shiny", "leaflet", "shinyFiles")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop("The '", pkg, "' package is required to run the app. ",
            "Install it with install.packages('", pkg, "').", call. = FALSE)
