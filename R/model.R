@@ -10,7 +10,8 @@
 #' @param config a config list, as returned by `load_config()`
 #' @return a list with `workflow` (the fitted workflow), `metrics` (cross-validated
 #'   performance), `importance` (permutation variable importance), `type` (the
-#'   model type fitted), `predictors`, and `threshold`
+#'   model type fitted), `model_data` (what it was fitted on), `predictors`, and
+#'   `threshold`
 #' @export
 fit_patch_model <- function(dat, config) {
   type <- resolve_model_type(config)
@@ -72,6 +73,10 @@ fit_patch_model <- function(dat, config) {
     classification_threshold = cutoff,
     importance = permutation_importance(fitted, model_data, predictors),
     type = type,
+    # Kept so diagnostics that need to re-predict - partial effects above all -
+    # can be produced without refitting. It is the station table, so hundreds to
+    # a few thousand rows.
+    model_data = model_data,
     predictors = predictors,
     threshold = attr(dat, "threshold")
   )

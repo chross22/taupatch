@@ -106,7 +106,7 @@ write_model_outputs <- function(model, config) {
   readr::write_csv(model$metrics, file.path(out, "cv_metrics.csv"))
   readr::write_csv(model$importance, file.path(out, "var_importance.csv"))
   plot_importance(model$importance, file.path(out, "var_importance.png"))
-  write_diagnostic_plots(model$predictions, out)
+  write_diagnostic_plots(model, out)
 
   # Record the computed threshold alongside the run, so a percentile-based run is
   # reproducible as an absolute one. The original wrote this back into the config
@@ -131,11 +131,16 @@ write_model_outputs <- function(model, config) {
 #' performance on data the model did not see. The predictions themselves are saved
 #' alongside, so a diagnostic not covered here can be produced without refitting.
 #'
-#' @param predictions the `predictions` element of a `fit_patch_model()` result
+#' Alongside them go the effect plots, which depend on which model was fitted:
+#' partial effects for every type, plus coefficients for a GLM or smooth terms
+#' for a GAM. See `write_effect_plots()`.
+#'
+#' @param model a fitted model from `fit_patch_model()`
 #' @param out the run's output directory
 #' @return `NULL`, invisibly
 #' @keywords internal
-write_diagnostic_plots <- function(predictions, out) {
+write_diagnostic_plots <- function(model, out) {
+  predictions <- model$predictions
   if (is.null(predictions) || nrow(predictions) == 0) return(invisible(NULL))
 
   diagnostics <- file.path(out, "diagnostics")
@@ -147,6 +152,8 @@ write_diagnostic_plots <- function(predictions, out) {
   plot_calibration(predictions, path = file.path(diagnostics, "calibration.png"))
   plot_threshold_performance(predictions,
                              file.path(diagnostics, "threshold_performance.png"))
+
+  write_effect_plots(model, diagnostics)
   invisible(NULL)
 }
 

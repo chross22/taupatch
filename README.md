@@ -529,6 +529,27 @@ plot, which a forest cannot give you.
 hyperparameters a type actually has — a GLM has none, and asking to tune one is
 an error rather than a silent no-op. `model_types()` describes each.
 
+**Diagnostics follow the model.** Every type gets partial effect curves — what
+each predictor *does* to patch probability, with the others held at the values
+they actually take. Importance says a predictor matters; this says which way, and
+where it bends. It is computed by prediction rather than read off the fitted
+object, so the curves mean the same thing for all four types and can be laid
+against each other.
+
+On top of that, each model contributes what only it can:
+
+| `type` | Extra diagnostic |
+|---|---|
+| `glm` | Signed coefficients with 95% intervals, on a common scale |
+| `gam` | Effective degrees of freedom per smooth — `edf` of 1 means the smooth collapsed to a line |
+| `rf` / `brt` | None; the partial effect curve *is* their answer |
+
+These land in `diagnostics/` alongside the ROC and calibration plots, and in the
+app's Diagnostics tab. `model_engine_fit()` returns the underlying `ranger`,
+`xgb.Booster`, `glm`, or `mgcv` object for anything that wants to plot it
+directly — [`fancygam`](https://github.com/chross22/fancygam)'s `plotSmooths()`
+takes exactly that.
+
 **Variable importance is computed the same way for all four**: the drop in ROC
 AUC when a predictor is shuffled, averaged over several shuffles. Engine-reported
 importances are not comparable — ranger's permutation drop and xgboost's split
@@ -621,6 +642,11 @@ cv_metrics.csv         the raw per-fold resampling table
 var_importance.csv     permutation variable importance
 var_importance.png
 threshold.yaml         the abundance threshold actually used
+diagnostics/roc_curve.png, pr_curve.png, calibration.png, threshold_performance.png
+diagnostics/cv_predictions.csv     held-out predictions, for any metric not tabulated
+diagnostics/partial_effects.png    what each predictor does to patch probability
+diagnostics/coefficients.png       glm only: signed effects with intervals
+diagnostics/smooth_terms.csv       gam only: effective degrees of freedom per smooth
 projections/<species>_<year>_<month>.tif
 plots/<species>_<year>_<month>.png
 covariates/monthly_means.csv       study-area mean per covariate, month, and year
@@ -640,6 +666,7 @@ R/prejoin.R             prejoin_steps(), apply_prejoin_steps()
 R/derivoce.R            derivoce_covariates(), add_derivoce_covariates()
 R/model.R               fit_patch_model()
 R/model_types.R         model_types(), permutation_importance()
+R/plot_effects.R        partial_effects(), glm_coefficients(), gam_smooth_terms()
 R/project.R             project_patch_model()
 R/plotting.R            plot_projection(), plot_importance()
 R/pipeline.R            run_taupatch()

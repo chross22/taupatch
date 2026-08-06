@@ -14,7 +14,8 @@ fit_patch_model(dat, config)
 \value{
 a list with \code{workflow} (the fitted workflow), \code{metrics} (cross-validated
 performance), \code{importance} (permutation variable importance), \code{type} (the
-model type fitted), \code{predictors}, and \code{threshold}
+model type fitted), \code{model_data} (what it was fitted on), \code{predictors}, and
+\code{threshold}
 }
 \description{
 Fits a tidymodels workflow classifying stations as inside or outside a

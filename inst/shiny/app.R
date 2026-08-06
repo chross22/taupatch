@@ -250,7 +250,16 @@ ui <- fluidPage(
                  fluidRow(
                    column(6, plotOutput("calibration_plot", height = "380px")),
                    column(6, plotOutput("threshold_plot", height = "380px"))
-                 )),
+                 ),
+                 br(),
+                 h4("Partial effects"),
+                 helpText("What each predictor does to patch probability, with",
+                          "the others held at the values they actually take.",
+                          "Importance says a predictor matters; this says which",
+                          "way. Computed the same way for every model type, so",
+                          "the curves can be compared across them."),
+                 plotOutput("partial_effects", height = "420px"),
+                 uiOutput("model_specific")),
         tabPanel("Maps", br(),
                  uiOutput("map_controls"),
                  leaflet::leafletOutput("map", height = "600px")),
@@ -568,6 +577,62 @@ server <- function(input, output, session) {
   output$threshold <- renderText({
     req(run_result())
     paste0("Abundance threshold used: ", signif(run_result()$model$threshold, 6))
+  })
+
+  # Partial effects need to re-predict, so they are computed once per run
+  # rather than on every redraw of the tab.
+  run_effects <- reactive({
+    req(run_result())
+    model <- run_result()$model
+    taupatch:::try_diagnostic(
+      partial_effects(model$workflow, model$model_data, model$predictors),
+      "partial effects"
+    )
+  })
+
+  output$partial_effects <- renderPlot({
+    effects <- run_effects()
+    validate(need(!is.null(effects) && nrow(effects) > 0,
+                  "Partial effects are unavailable for this run."))
+    plot_partial_effects(effects)
+  })
+
+  # The one thing the chosen model can say that the others cannot.
+  output$model_specific <- renderUI({
+    req(run_result())
+    model <- run_result()$model
+
+    if (identical(model$type, "glm")) {
+      return(tagList(
+        h4("Coefficients"),
+        helpText("Log-odds per standard deviation, with 95% intervals. An",
+                 "interval crossing zero is a predictor the model cannot sign."),
+        plotOutput("glm_coefficients", height = "320px")
+      ))
+    }
+    if (identical(model$type, "gam")) {
+      return(tagList(
+        h4("Smooth terms"),
+        helpText("Effective degrees of freedom per smooth. An edf of 1 means",
+                 "the smooth collapsed to a straight line, so the flexibility",
+                 "bought nothing there; larger values mean a real bend."),
+        tableOutput("gam_terms")
+      ))
+    }
+    NULL
+  })
+
+  output$glm_coefficients <- renderPlot({
+    req(run_result())
+    plot_glm_coefficients(glm_coefficients(run_result()$model$workflow))
+  })
+
+  output$gam_terms <- renderTable({
+    req(run_result())
+    terms <- gam_smooth_terms(run_result()$model$workflow)
+    data.frame(Term = terms$term, edf = round(terms$edf, 2),
+               `p value` = format.pval(terms$p_value, digits = 3),
+               check.names = FALSE)
   })
 
   output$map_controls <- renderUI({

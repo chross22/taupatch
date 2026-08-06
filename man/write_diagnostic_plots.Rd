@@ -4,10 +4,10 @@
 \alias{write_diagnostic_plots}
 \title{Write model diagnostic plots}
 \usage{
-write_diagnostic_plots(predictions, out)
+write_diagnostic_plots(model, out)
 }
 \arguments{
-\item{predictions}{the \code{predictions} element of a \code{fit_patch_model()} result}
+\item{model}{a fitted model from \code{fit_patch_model()}}
 
 \item{out}{the run's output directory}
 }
@@ -18,5 +18,10 @@ write_diagnostic_plots(predictions, out)
 All four are drawn from held-out cross-validation predictions, so they describe
 performance on data the model did not see. The predictions themselves are saved
 alongside, so a diagnostic not covered here can be produced without refitting.
+}
+\details{
+Alongside them go the effect plots, which depend on which model was fitted:
+partial effects for every type, plus coefficients for a GLM or smooth terms
+for a GAM. See \code{write_effect_plots()}.
 }
 \keyword{internal}
