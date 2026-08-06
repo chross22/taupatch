@@ -126,6 +126,11 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       width = 3,
+      h4("Data"),
+      fileInput("zoop_upload", "Zooplankton CSV", accept = c(".csv", "text/csv")),
+      uiOutput("data_status"),
+
+      hr(),
       h4("Species"),
       selectInput("species", "Species", choices = names(base_config$species$catalog),
                   selected = base_config$species$active),
@@ -304,11 +309,81 @@ server <- function(input, output, session) {
     entry$column_prefix %||% input$species
   })
 
+  # The uploaded file when there is one, otherwise whatever the launching config
+  # pointed at - the mock database for a default session. Everything that reads
+  # the station data goes through here rather than at base_config directly, so
+  # an upload takes effect everywhere at once.
+  zoop_path <- reactive({
+    upload <- input$zoop_upload
+    if (is.null(upload)) return(base_config$paths$zoop_file)
+    upload$datapath
+  })
+
   stage_choices <- reactive({
     req(input$species)
-    if (!file.exists(base_config$paths$zoop_file)) return(character())
-    tryCatch(available_stages(base_config$paths$zoop_file, species_prefix()),
+    if (!file.exists(zoop_path())) return(character())
+    tryCatch(available_stages(zoop_path(), species_prefix()),
              error = function(e) character())
+  })
+
+  # Reads the header only, never a data row, so a large database is checked in
+  # the time it takes to open the file.
+  data_header <- reactive({
+    if (!file.exists(zoop_path())) return(NULL)
+    tryCatch(
+      names(readr::read_csv(zoop_path(), n_max = 0, show_col_types = FALSE,
+                            progress = FALSE)),
+      error = function(e) NULL
+    )
+  })
+
+  # Says what the file is before a run is started, rather than letting a missing
+  # column surface as a failure after the covariates have been downloaded.
+  output$data_status <- renderUI({
+    if (is.null(input$zoop_upload)) {
+      return(helpText("Using the session default. Upload a CSV to model your own",
+                      "stations - it is read in place and never copied anywhere."))
+    }
+    header <- data_header()
+    if (is.null(header)) {
+      return(div(class = "text-danger",
+                 strong("Could not read that file as CSV.")))
+    }
+
+    check <- tryCatch({
+      config <- base_config
+      config$paths$zoop_file <- zoop_path()
+      validate_columns(config)
+      NULL
+    }, error = function(e) conditionMessage(e))
+
+    resolvable <- names(base_config$species$catalog)[
+      vapply(names(base_config$species$catalog), function(name) {
+        entry <- base_config$species$catalog[[name]]
+        prefix <- entry$column_prefix %||% name
+        length(tryCatch(available_stages(zoop_path(), prefix),
+                        error = function(e) character())) > 0
+      }, logical(1))
+    ]
+
+    tagList(
+      div(strong(input$zoop_upload$name), " - ", length(header), " columns"),
+      if (!is.null(check)) {
+        div(class = "text-danger", style = "font-size: 12px; margin-top: 6px;",
+            strong("Not usable yet: "), check)
+      } else {
+        div(class = "text-success", style = "font-size: 12px; margin-top: 6px;",
+            "Required columns present.")
+      },
+      if (length(resolvable) > 0) {
+        helpText("Species resolved in this file: ",
+                 paste(resolvable, collapse = ", "))
+      } else {
+        helpText("No species in the catalog resolves to columns in this file.",
+                 "The catalog names column prefixes, which this file may spell",
+                 "differently.")
+      }
+    )
   })
 
   # Remembered per type, because the two live on completely different scales -
@@ -388,6 +463,7 @@ server <- function(input, output, session) {
     # first pass and when the threshold type changes.
     req(input$threshold_value)
     config <- base_config
+    config$paths$zoop_file <- zoop_path()
     config$species$active <- input$species
     config$species$catalog[[input$species]]$threshold <- list(
       type = input$threshold_type, value = input$threshold_value

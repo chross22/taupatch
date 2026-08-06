@@ -617,6 +617,12 @@ projection:                   # months that get mapped; omit to reuse the above
 
 ## The app
 
+Upload your own station CSV directly in the sidebar — the app reads it in place,
+checks it against the config's declared columns before a run starts, and reports
+which species in the catalog resolve to columns actually in the file. Nothing is
+copied anywhere. The default 5 MB Shiny upload cap is raised to 200 MB; change it
+with `run_taupatch_app(max_upload_mb = ...)`.
+
 ```r
 run_taupatch_app()                              # synthetic data
 run_taupatch_app("inst/configs/cfin_gom.yaml")  # your own config
