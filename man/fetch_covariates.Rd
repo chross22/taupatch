@@ -2,6 +2,7 @@
 % Please edit documentation in R/covariates.R
 \name{fetch_covariates}
 \alias{fetch_covariates}
+\alias{covariate-resolution}
 \title{Fetch environmental covariates}
 \usage{
 fetch_covariates(config, years = NULL, months = NULL)
@@ -26,3 +27,31 @@ covariates so the pipeline can run without network access.
 \details{
 All three return the same shape, so everything downstream is source-agnostic.
 }
+\section{Combining products of different resolution}{
+
+Copernicus products do not share a grid — physics is 0.083 degrees,
+biogeochemistry 0.25 — so selecting \code{SST} and \code{CHL} together means two grids
+that have to be reconciled onto one.
+
+\code{covariates.grid} decides which:
+
+\itemize{
+\item \code{"finest"} (the default) keeps the finest grid and repeats each
+coarse cell's value across the fine cells inside it. Fine-scale structure
+in the fine variables survives, which matters because fronts and gradients
+are computed from them and a coarse grid would smooth those away.
+\item \code{"coarsest"} joins onto the coarsest grid instead, so no value is ever
+replicated.
+}
+
+The cost of \code{"finest"} is worth stating plainly: a coarse variable rendered on
+a fine grid is blocky, not detailed. Its values are constant within each
+original cell and step at the boundaries, so a \strong{spatial gradient computed
+from an upsampled variable is an artifact} — zero inside each block, spiking
+at block edges that are an artifact of the source grid rather than a feature
+of the ocean. Compute gradients from variables at their native resolution.
+
+Which covariates were upsampled is recorded on the result as an \code{upsampled}
+attribute.
+}
+

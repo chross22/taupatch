@@ -74,7 +74,83 @@ fetch_covariates_copernicus <- function(config, years, months) {
     fetched
   })
 
-  Reduce(join_covariate_sources, per_dataset)
+  # Which grid the result lands on is a real choice, so it is a config field
+  # rather than an accident of the order the specs happened to come in.
+  spacing <- vapply(per_dataset, grid_spacing, numeric(1))
+  grid <- config$covariates$grid %||% "finest"
+  ordering <- order(spacing, decreasing = (grid == "coarsest"))
+  per_dataset <- per_dataset[ordering]
+
+  joined <- Reduce(join_covariate_sources, per_dataset)
+
+  # Record which covariates were rendered onto a grid finer than their own, so
+  # a caller can tell blocky values from real detail. A gradient computed from
+  # one of these measures the source grid, not the ocean.
+  target <- spacing[ordering][1]
+  upsampled <- unlist(lapply(seq_along(per_dataset), function(i) {
+    if (spacing[ordering][i] <= target) return(NULL)
+    covariate_names(per_dataset[[i]])
+  }))
+  attr(joined, "upsampled") <- upsampled
+
+  if (length(upsampled) > 0) {
+    message("  ", paste(upsampled, collapse = ", "),
+            " upsampled from a coarser grid; values repeat within each source cell")
+  }
+  joined
+}
+
+#' @section Combining products of different resolution:
+#' Copernicus products do not share a grid — physics is 0.083 degrees,
+#' biogeochemistry 0.25 — so selecting `SST` and `CHL` together means two grids
+#' that have to be reconciled onto one.
+#'
+#' `covariates.grid` decides which:
+#'
+#' \itemize{
+#'   \item `"finest"` (the default) keeps the finest grid and repeats each
+#'     coarse cell's value across the fine cells inside it. Fine-scale structure
+#'     in the fine variables survives, which matters because fronts and gradients
+#'     are computed from them and a coarse grid would smooth those away.
+#'   \item `"coarsest"` joins onto the coarsest grid instead, so no value is ever
+#'     replicated.
+#' }
+#'
+#' The cost of `"finest"` is worth stating plainly: a coarse variable rendered on
+#' a fine grid is blocky, not detailed. Its values are constant within each
+#' original cell and step at the boundaries, so a **spatial gradient computed
+#' from an upsampled variable is an artifact** — zero inside each block, spiking
+#' at block edges that are an artifact of the source grid rather than a feature
+#' of the ocean. Compute gradients from variables at their native resolution.
+#'
+#' Which covariates were upsampled is recorded on the result as an `upsampled`
+#' attribute.
+#'
+#' @rdname fetch_covariates
+#' @name covariate-resolution
+NULL
+
+#' Grid spacing of a covariate source, in degrees
+#'
+#' Measured from one time step's unique coordinates, since every step repeats
+#' the same grid.
+#'
+#' @param env_dat an `sf` POINT object from `datamatch::accessEnvDat()`
+#' @return the coarser of the longitude and latitude spacings
+#' @keywords internal
+grid_spacing <- function(env_dat) {
+  first <- env_dat[env_dat$YEAR == env_dat$YEAR[1] &
+                     env_dat$MONTH == env_dat$MONTH[1] &
+                     env_dat$DAY == env_dat$DAY[1], ]
+  coords <- sf::st_coordinates(first)
+
+  step <- function(values) {
+    unique_values <- sort(unique(values))
+    if (length(unique_values) < 2) return(NA_real_)
+    min(diff(unique_values))
+  }
+
+  max(step(coords[, 1]), step(coords[, 2]), na.rm = TRUE)
 }
 
 #' Copernicus fetch specifications for a config
@@ -101,9 +177,37 @@ covariate_specs <- function(config) {
 #' @keywords internal
 join_covariate_sources <- function(x, y) {
   y_vars <- setdiff(names(y), c("YEAR", "MONTH", "DAY", attr(y, "sf_column")))
-  joined <- sf::st_join(x, y[c(y_vars, "YEAR", "MONTH", "DAY")],
-                        join = sf::st_nearest_feature, suffix = c("", ".y"))
-  joined[!grepl("\\.y$", names(joined))]
+
+  # Joined one time step at a time. A single spatial join across the whole
+  # stack matches on geometry alone, and because every time step repeats the
+  # same coordinates, st_nearest_feature would resolve the tie to one arbitrary
+  # step - attaching the first month's chlorophyll to every month, silently and
+  # plausibly. This matters whenever two products have different grids, which
+  # is the normal case: Copernicus physics is 0.083 degrees and biogeochemistry
+  # 0.25.
+  steps <- unique(sf::st_drop_geometry(x)[c("YEAR", "MONTH", "DAY")])
+  y_time <- sf::st_drop_geometry(y)[c("YEAR", "MONTH", "DAY")]
+
+  joined <- lapply(seq_len(nrow(steps)), function(i) {
+    step <- steps[i, ]
+    x_rows <- x$YEAR == step$YEAR & x$MONTH == step$MONTH & x$DAY == step$DAY
+    y_rows <- y_time$YEAR == step$YEAR & y_time$MONTH == step$MONTH &
+      y_time$DAY == step$DAY
+
+    if (!any(y_rows)) {
+      # The second product has no data for this step. Fill rather than drop, so
+      # the row count does not silently depend on which products were selected.
+      missing <- x[x_rows, ]
+      for (v in y_vars) missing[[v]] <- NA_real_
+      return(missing)
+    }
+
+    sf::st_join(x[x_rows, ], y[y_rows, y_vars],
+                join = sf::st_nearest_feature, suffix = c("", ".y"))
+  })
+
+  result <- do.call(rbind, joined)
+  result[!grepl("\\.y$", names(result))]
 }
 
 #' Read covariates from a directory of NetCDF files

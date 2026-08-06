@@ -109,3 +109,78 @@ test_that("the covariate heatmap recovers the planted seasonal cycle", {
   expect_s3_class(plot_covariate_heatmap(means, "SST"), "ggplot")
   expect_error(plot_covariate_heatmap(means, "NOPE"), "No values for covariate")
 })
+
+# Two products on different grids, with month-distinguishable values, so a join
+# that ignored time or resolution shows up as a wrong number rather than a
+# subtly different one.
+two_resolution_sources <- function() {
+  fine <- do.call(rbind, lapply(1:2, function(m) {
+    g <- expand.grid(x = seq(-70, -69, by = 0.25), y = seq(42, 43, by = 0.25))
+    g$SST <- 10 + m; g$YEAR <- 2020; g$MONTH <- m; g$DAY <- 1L; g
+  }))
+  coarse <- do.call(rbind, lapply(1:2, function(m) {
+    g <- expand.grid(x = seq(-70, -69, by = 0.5), y = seq(42, 43, by = 0.5))
+    g$CHL <- 100 * m; g$YEAR <- 2020; g$MONTH <- m; g$DAY <- 1L; g
+  }))
+  list(
+    fine = sf::st_as_sf(fine, coords = c("x", "y"), crs = 4326),
+    coarse = sf::st_as_sf(coarse, coords = c("x", "y"), crs = 4326)
+  )
+}
+
+test_that("joining two sources keeps each time step's own values", {
+  # A single spatial join across the whole stack matches on geometry alone.
+  # Every time step repeats the same coordinates, so st_nearest_feature
+  # resolves the tie to one arbitrary step - attaching January's chlorophyll to
+  # every month, silently and plausibly.
+  sources <- two_resolution_sources()
+
+  joined <- join_covariate_sources(sources$coarse, sources$fine)
+
+  expect_equal(unique(joined$SST[joined$MONTH == 1]), 11)
+  expect_equal(unique(joined$SST[joined$MONTH == 2]), 12)
+})
+
+test_that("grid_spacing measures a source's resolution", {
+  sources <- two_resolution_sources()
+
+  expect_equal(grid_spacing(sources$fine), 0.25)
+  expect_equal(grid_spacing(sources$coarse), 0.5)
+})
+
+test_that("a source missing a time step yields NA rather than dropping rows", {
+  sources <- two_resolution_sources()
+  january_only <- sources$fine[sources$fine$MONTH == 1, ]
+
+  joined <- join_covariate_sources(sources$coarse, january_only)
+
+  # The row count must not depend on which products were selected.
+  expect_equal(nrow(joined), nrow(sources$coarse))
+  expect_false(any(is.na(joined$SST[joined$MONTH == 1])))
+  expect_true(all(is.na(joined$SST[joined$MONTH == 2])))
+})
+
+test_that("the finest grid is kept by default, with coarse values repeated", {
+  sources <- two_resolution_sources()
+  config <- mock_config()
+
+  spacing <- vapply(sources, grid_spacing, numeric(1))
+  ordering <- order(spacing, decreasing = FALSE)
+  joined <- Reduce(join_covariate_sources, sources[ordering])
+
+  # The fine grid has 25 cells per step, the coarse one 9. Keeping the fine
+  # grid means every fine cell survives.
+  expect_equal(nrow(joined), nrow(sources$fine))
+  # Chlorophyll is repeated rather than interpolated: still only its original
+  # two distinct values, one per month.
+  expect_setequal(unique(joined$CHL), c(100, 200))
+})
+
+test_that("choosing the coarsest grid replicates nothing", {
+  sources <- two_resolution_sources()
+
+  ordering <- order(vapply(sources, grid_spacing, numeric(1)), decreasing = TRUE)
+  joined <- Reduce(join_covariate_sources, sources[ordering])
+
+  expect_equal(nrow(joined), nrow(sources$coarse))
+})

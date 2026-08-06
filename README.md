@@ -191,6 +191,33 @@ These replace the SRTM30 depth/slope/distance-to-shore layers the original used.
 Distance to shore, gradients, time-integrals and lags are not here — those are
 derived quantities headed for a separate package.
 
+### Combining products of different resolution
+
+Copernicus products do not share a grid — physics is 0.083 degrees,
+biogeochemistry 0.25 — so selecting `SST` and `CHL` together means two grids that
+have to be reconciled onto one. `covariates.grid` decides which:
+
+```yaml
+covariates:
+  selected: [SST, SSS, CHL]
+  grid: finest      # or: coarsest
+```
+
+- **`finest`** (the default) keeps the finest grid and repeats each coarse cell's
+  value across the fine cells inside it. Fine-scale structure survives in the fine
+  variables, which matters because fronts and gradients are computed from them.
+- **`coarsest`** joins onto the coarsest grid, so no value is ever replicated.
+
+The cost of `finest` is worth stating plainly: **a coarse variable rendered on a
+fine grid is blocky, not detailed.** Its values are constant within each original
+cell and step at the boundaries, so a spatial gradient computed from an upsampled
+variable is an artifact — zero inside each block, spiking at edges that belong to
+the source grid rather than the ocean. Compute gradients from variables at their
+native resolution.
+
+A run reports which covariates were upsampled, and records them on the result as
+an `upsampled` attribute.
+
 ### Training and projection windows
 
 These are separate, since fitting on a long history and projecting a shorter or
