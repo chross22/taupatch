@@ -157,6 +157,10 @@ covariates:
   selected: [SST, SSS, BOTT, MLD, CHL]   # time-varying, from Copernicus
   bathymetry: [DEPTH, SLOPE]             # static, from NOAA ETOPO
   derived: [jday]                        # day of year; the seasonality term
+  prejoin:                               # per-covariate prep, before the join
+    - type: upscale
+      covariate: CHL
+      to: SST
   derivoce:                              # computed from the grid, optional
     - type: horizontal_gradient
       vars: [SST]
@@ -413,6 +417,57 @@ Two rules the package enforces against the data rather than trusting:
 `covariate_transforms()` lists all of them. `covariates.log_transform` still works
 and still means `log1p`.
 
+### Preparing covariates before the join
+
+The join below is all-or-nothing: `covariates.grid` decides for every covariate
+at once, and it reconciles grids by replication. `covariates.prejoin` is the
+per-covariate alternative, applied *before* the join, so the join then sees grids
+that already agree and leaves them alone:
+
+```yaml
+covariates:
+  selected: [SST, SSS, CHL, CHL_MODEL]
+  prejoin:
+    - type: fill_gaps
+      covariate: CHL
+      from: CHL_MODEL     # consumed, not kept — keep_source: true to retain it
+      rescale: false
+    - type: upscale
+      covariate: CHL
+      to: SST             # another covariate's grid, or a number of degrees
+      method: median
+```
+
+| Step | What it does |
+|---|---|
+| `upscale` | Aggregates onto a coarser grid — `mean`, `median`, `min`, `max` |
+| `downscale` | Interpolates onto a finer grid — `nearest`, `bilinear`, `idw` |
+| `fill_gaps` | Substitutes another covariate wherever the first is missing |
+
+Steps run in order and see what earlier ones produced, so the pair above fills
+chlorophyll's cloud gaps and *then* regrids the filled field.
+
+The reason to want per-covariate control is that the right treatment differs by
+covariate. Ocean-colour chlorophyll is a 4 km optical retrieval riddled with
+cloud gaps; physics is a 0.083 degree model with no gaps at all. Averaging
+chlorophyll up to the physics grid summarises values that were really measured.
+Interpolating physics down to 4 km invents structure. One global setting cannot
+say both.
+
+Two things worth knowing:
+
+- **`downscale` invents values between the ones that were measured.** `nearest`
+  replicates and is at least honest about being blocky; `bilinear` and `idw` are
+  smooth and look more like data than they are.
+- **`fill_gaps` splices two different measurements of one quantity**, so the
+  series changes its statistical properties at the seam. A `<covariate>_source`
+  column records where each value came from, so you can check whether a result
+  rests on observed or simulated cells. The filling covariate is dropped from the
+  join by default — it was fetched as a means, not an end, and keeping it would
+  hand the model two near-identical predictors.
+
+`prejoin_steps()` lists the step types. The computation is all `datamatch`.
+
 ### Combining products of different resolution
 
 Copernicus products do not share a grid — physics is 0.083 degrees,
@@ -536,6 +591,7 @@ R/zoop_data.R           load_zoop_data(), label_patch(), available_stages()
 R/covariate_catalog.R   copernicus_covariates(), covariate_info()
 R/covariates.R          fetch_covariates(), attach_covariates(), covariate_grid()
 R/bathymetry.R          bathymetry_covariates(), the static seafloor layers
+R/prejoin.R             prejoin_steps(), apply_prejoin_steps()
 R/derivoce.R            derivoce_covariates(), add_derivoce_covariates()
 R/model.R               fit_patch_model()
 R/project.R             project_patch_model()

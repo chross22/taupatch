@@ -447,7 +447,10 @@ validate_derivoce <- function(config) {
   if (length(specs) == 0) return(invisible(TRUE))
 
   catalog <- derivoce_covariates()
-  available <- c(config$covariates$selected, config$covariates$bathymetry,
+  # A gap-filling source is consumed before the join, so it is not on the grid
+  # a derived covariate would be computed from.
+  available <- c(setdiff(config$covariates$selected, prejoin_dropped(config)),
+                 config$covariates$bathymetry,
                  names(config$covariates$copernicus))
 
   for (raw in specs) {

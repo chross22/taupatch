@@ -102,11 +102,12 @@ apply_config_defaults <- function(config) {
          transform = list(), normalize = TRUE, log_transform = character()),
     config$covariates %||% list()
   )
-  # Not a modifyList default. It recurses when both sides are lists and merges
-  # by name, and a derivoce block is an *unnamed* sequence of steps - so the
+  # Not modifyList defaults. It recurses when both sides are lists and merges
+  # by name, and these blocks are *unnamed* sequences of steps - so the
   # recursion finds no names to merge and yields the empty default back,
   # erasing the block the config actually asked for.
   config$covariates$derivoce <- config$covariates$derivoce %||% list()
+  config$covariates$prejoin <- config$covariates$prejoin %||% list()
   config
 }
 
@@ -281,8 +282,12 @@ validate_covariates <- function(config) {
     }
   }
 
+  validate_prejoin(config)
   validate_derivoce(config)
-  validate_transforms(config, c(selected, bathymetry, config$covariates$derived,
+  # A gap-filling source does not survive the join, so it cannot be transformed
+  # or named by a later step as though it were a predictor.
+  validate_transforms(config, c(setdiff(selected, prejoin_dropped(config)),
+                                bathymetry, config$covariates$derived,
                                 derivoce_names(config)))
   if (source == "local_netcdf" && is.null(config$paths$covariate_dir)) {
     stop("covariates.source is 'local_netcdf' but paths.covariate_dir is not set.",
@@ -386,6 +391,8 @@ validate_columns <- function(config) {
 #' @param covariate_source one of `"copernicus"`, `"local_netcdf"`, `"mock"`
 #' @param selected time-varying covariate names; see [copernicus_covariates()]
 #' @param bathymetry static seafloor covariate names; see [bathymetry_covariates()]
+#' @param prejoin list of per-covariate steps applied before products are
+#'   joined; see [prejoin_steps()]
 #' @param derivoce list of derived-covariate steps; see [derivoce_covariates()]
 #' @param transform named list of transform to covariate names; see
 #'   [covariate_transforms()]
@@ -416,6 +423,7 @@ generate_config <- function(name,
                             covariate_source = "copernicus",
                             selected = c("SST", "SSS", "BOTT", "MLD", "CHL"),
                             bathymetry = c("DEPTH", "SLOPE"),
+                            prejoin = list(),
                             derivoce = list(),
                             transform = list(log1p = c("CHL", "DEPTH")),
                             normalize = TRUE,
@@ -427,6 +435,7 @@ generate_config <- function(name,
   # Omitted rather than written empty, so the generated file shows only the
   # blocks the run actually uses.
   if (length(bathymetry) > 0) covariates$bathymetry <- as.character(bathymetry)
+  if (length(prejoin) > 0) covariates$prejoin <- prejoin
   covariates$derived <- "jday"
   if (length(derivoce) > 0) covariates$derivoce <- derivoce
   if (length(transform) > 0) covariates$transform <- transform

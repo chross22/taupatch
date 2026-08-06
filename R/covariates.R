@@ -74,6 +74,14 @@ fetch_covariates_copernicus <- function(config, years, months) {
     fetched
   })
 
+  # Per-covariate resampling and gap-filling happen here, before the join, so
+  # the join sees grids that already agree and leaves them alone. Anything the
+  # config did not ask about falls through to the all-or-nothing choice below.
+  if (length(config$covariates$prejoin) > 0) {
+    message("Preparing covariates before the join...")
+    per_dataset <- apply_prejoin_steps(per_dataset, config)
+  }
+
   # Which grid the result lands on is a real choice, so it is a config field
   # rather than an accident of the order the specs happened to come in.
   spacing <- vapply(per_dataset, grid_spacing, numeric(1))
@@ -296,6 +304,11 @@ drop_missing <- function(dat, cols) {
 covariate_monthly_means <- function(env_dat, vars = NULL) {
   vars <- vars %||% datamatch::covariate_columns(env_dat)
   flat <- sf::st_drop_geometry(env_dat)
+
+  # Not every covariate column is a number to average. Gap-filling adds a
+  # `<var>_source` factor recording where each value came from, and a mean of
+  # that is a warning and a column of NA.
+  vars <- vars[vapply(flat[vars], is.numeric, logical(1))]
 
   means <- lapply(vars, function(v) {
     aggregated <- stats::aggregate(flat[[v]], by = list(year = flat$YEAR, month = flat$MONTH),

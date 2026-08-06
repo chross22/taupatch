@@ -90,6 +90,24 @@ covariates:
   bathymetry:
     - DEPTH
     - SLOPE
+  # Per-covariate preparation, applied before the products are joined onto one
+  # grid. Without this the join is all-or-nothing: `grid` below decides for
+  # every covariate at once. Run taupatch::prejoin_steps() for the step types.
+  #
+  # CHL is a 4 km satellite retrieval, finer than the 0.083 degree physics and
+  # full of cloud gaps; the two steps below fill those gaps from the model
+  # equivalent, then aggregate onto the physics grid by averaging real values
+  # rather than letting the join interpolate physics down to 4 km. Uncomment
+  # CHL_MODEL in `selected` above to use them.
+  # prejoin:
+  #   - type: fill_gaps
+  #     covariate: CHL
+  #     from: CHL_MODEL      # consumed, not kept - keep_source: true to retain
+  #     rescale: false       # true matches the model's mean/variance first
+  #   - type: upscale
+  #     covariate: CHL
+  #     to: SST              # a covariate's grid, or a number of degrees
+  #     method: median       # resists cloud-edge retrieval artifacts
   derived:
     - jday     # day of year; the seasonality term
   # Covariates computed from the grid above rather than downloaded, by the
