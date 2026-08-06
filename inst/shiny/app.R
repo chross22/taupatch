@@ -78,6 +78,11 @@ transform_choices <- stats::setNames(
          vapply(transform_catalog, function(e) e$label, character(1)))
 )
 
+# The corner notification is easy to miss and small. "old" is Shiny's
+# full-width bar across the top of the page, which is what a run lasting
+# twenty minutes deserves.
+shinyOptions(progress.style = "old")
+
 ui <- fluidPage(
   tags$head(tags$style(HTML("
     /* A tiled copy of the header photo, dropped almost all the way out, over a
@@ -103,9 +108,17 @@ ui <- fluidPage(
                        box-shadow: 0 1px 4px rgba(20, 60, 80, 0.18); }
     .tp-header-credit { font-size: 10px; color: #7b8a93; margin-top: 3px;
                         line-height: 1.3; max-width: 220px; }
-    .tp-header-title { margin: 0; font-size: 28px; letter-spacing: -0.4px;
+    .tp-header-title { margin: 0; font-size: 44px; font-weight: 700;
+                       letter-spacing: -1px; line-height: 1.05;
                        color: #14343f; }
-    .tp-header-sub { color: #55707c; margin: 5px 0 0; font-size: 14px; }
+    .tp-header-sub { color: #55707c; margin: 7px 0 0; font-size: 15px; }
+
+    /* The full-width progress bar, made tall enough to read at a glance and to
+       fit the percentage and stage name it now carries. */
+    .shiny-progress .progress { height: 22px; margin-bottom: 4px; }
+    .shiny-progress .progress-bar { height: 22px; }
+    .shiny-progress .progress-message { font-size: 15px; font-weight: 600; }
+    .shiny-progress .progress-detail { font-size: 13px; color: #55707c; }
     @media (max-width: 700px) { .tp-header-photo { width: 100%; } }
 
     .tp-section { border-bottom: 1px solid #e3e3e3; padding: 2px 0 6px; }
@@ -963,8 +976,22 @@ server <- function(input, output, session) {
           }
           run_taupatch(config)
         }, message = function(m) {
-          messages <<- c(messages, sub("\n$", "", conditionMessage(m)))
-          incProgress(0.15, detail = sub("\n$", "", conditionMessage(m)))
+          text <- sub("\n$", "", conditionMessage(m))
+          messages <<- c(messages, text)
+
+          # The named stages move the bar; everything else is detail within the
+          # stage it belongs to, and shown as such. Nudging the bar on every
+          # message instead would have it racing through the quick ones and
+          # stalling through the twenty-minute download.
+          stage <- taupatch:::match_pipeline_stage(text)
+          if (!is.null(stage)) {
+            setProgress(value = stage$at,
+                        message = paste0(round(stage$at * 100), "% - ",
+                                         stage$label),
+                        detail = "")
+          } else if (nzchar(trimws(text))) {
+            setProgress(detail = trimws(text))
+          }
           invokeRestart("muffleMessage")
         }),
         error = function(e) {

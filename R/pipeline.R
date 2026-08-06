@@ -188,3 +188,69 @@ write_covariate_summary <- function(covariate_means, config) {
   }
   invisible(NULL)
 }
+
+#' The stages a run passes through, and how far along each one is
+#'
+#' [run_taupatch()] announces each stage as it starts. This turns those
+#' announcements into a position on a progress bar, so a caller watching a long
+#' run can tell a covariate download from a model fit.
+#'
+#' The fractions are where a stage *begins*, and they are weighted by how long
+#' each takes rather than spread evenly: fetching covariates is most of a real
+#' run and labelling patches is instant, so an even split would sit at 40% for
+#' twenty minutes and then race through the rest.
+#'
+#' Matched on the message rather than signalled through a condition class,
+#' because the messages are the pipeline's existing interface to anyone watching
+#' it and a second channel would be a second thing to keep in step.
+#'
+#' @return a data frame of `pattern`, `label`, and `at` (fraction complete when
+#'   the stage starts), in order
+#' @examples
+#' pipeline_stages()
+#' @export
+pipeline_stages <- function() {
+  data.frame(
+    pattern = c(
+      "^Loading zooplankton data",
+      "^Fetching environmental covariates",
+      "^Preparing covariates before the join",
+      "^Fetching bathymetry",
+      "^Deriving covariates",
+      "^Matching covariates to stations",
+      "^Attaching climate indices",
+      "^Labeling patches",
+      "^Fitting model",
+      "^Projecting monthly suitability",
+      "^Output written to"
+    ),
+    label = c(
+      "Reading the station database",
+      "Downloading covariates from Copernicus",
+      "Resampling covariates before the join",
+      "Downloading bathymetry",
+      "Computing derived covariates",
+      "Matching covariates to stations",
+      "Attaching climate indices",
+      "Labelling high-abundance patches",
+      "Fitting and cross-validating the model",
+      "Projecting monthly maps",
+      "Writing output"
+    ),
+    at = c(0.02, 0.06, 0.55, 0.60, 0.64, 0.72, 0.76, 0.78, 0.80, 0.92, 0.99),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Where a pipeline message places a run
+#'
+#' @param text a message from [run_taupatch()]
+#' @return a one-row [pipeline_stages()] slice, or `NULL` for messages that are
+#'   detail within a stage rather than the start of one
+#' @keywords internal
+match_pipeline_stage <- function(text) {
+  stages <- pipeline_stages()
+  hit <- which(vapply(stages$pattern, function(p) grepl(p, text), logical(1)))
+  if (length(hit) == 0) return(NULL)
+  stages[hit[1], ]
+}

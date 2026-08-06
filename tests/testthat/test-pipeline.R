@@ -112,3 +112,56 @@ test_that("projection_map sets a view with plain numeric bounds", {
   extent <- unname(as.vector(terra::ext(terra::rast(result$projections$geotiff[1]))))
   expect_equal(unlist(bounds), c(extent[3], extent[1], extent[4], extent[2]))
 })
+
+test_that("the progress stages are ordered and cover the run", {
+  stages <- pipeline_stages()
+
+  expect_true(all(diff(stages$at) > 0))
+  expect_true(all(stages$at > 0 & stages$at < 1))
+  expect_true(all(nzchar(stages$label)))
+  # Weighted rather than even: the covariate download is most of a real run, so
+  # the bar should sit in it rather than sprint past.
+  download <- stages$at[stages$label == "Downloading covariates from Copernicus"]
+  next_stage <- min(stages$at[stages$at > download])
+  expect_gt(next_stage - download, 0.3)
+})
+
+test_that("every stage a run announces moves the bar", {
+  skip_on_cran()
+  config <- mock_config()
+  config$model$trees <- 50
+  config$model$cv_folds <- 3
+  config$projection$years <- c(2018, 2018)
+  config$projection$months <- c(6, 6)
+  config$projection$write_geotiff <- FALSE
+  config$projection$write_png <- FALSE
+  generate_mock_zoop_data(config)
+
+  seen <- character()
+  withCallingHandlers(
+    invisible(suppressWarnings(run_taupatch(config))),
+    message = function(m) {
+      seen <<- c(seen, sub("\n$", "", conditionMessage(m)))
+      invokeRestart("muffleMessage")
+    }
+  )
+
+  # A top-level message is a stage starting. One the table does not know about
+  # is a stage the bar sits still through, which is how a progress bar comes to
+  # look frozen.
+  top_level <- seen[!grepl("^\\s", seen)]
+  unmatched <- Filter(function(t) is.null(match_pipeline_stage(t)), top_level)
+  expect_length(unmatched, 0)
+
+  # And the run reaches the end of the bar rather than stopping partway.
+  reached <- vapply(top_level, function(t) match_pipeline_stage(t)$at, numeric(1))
+  expect_gte(max(reached), 0.99)
+})
+
+test_that("detail lines do not move the bar", {
+  # Indented messages are progress within a stage - a record count, a threshold -
+  # and moving the bar for each would race it through the quick stages.
+  expect_null(match_pipeline_stage("  684 station records"))
+  expect_null(match_pipeline_stage("  ROC AUC: 0.8734"))
+  expect_null(match_pipeline_stage("  threshold: 9315.31"))
+})
