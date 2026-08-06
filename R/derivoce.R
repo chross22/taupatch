@@ -491,11 +491,13 @@ validate_derivoce <- function(config) {
 #' selection of fetched covariates into the concrete derived covariates that can
 #' be built from it, each already carrying the config step that produces it.
 #'
-#' This is the app's covariate picker, and it is deliberately a subset of what a
-#' config can express. Steps needing a choice with no sensible default — the
-#' Lyapunov exponents, a contour at particular levels, a lag of other than one
-#' step — are left to the YAML, where the choice can be made explicitly rather
-#' than guessed at.
+#' This is the app's covariate picker, and it is a subset of what a config can
+#' express. Where a step has a defensible default it is offered with it: the
+#' Lyapunov exponents are offered backward, which finds the attracting
+#' structures where water converges, since that is the question a habitat model
+#' asks. Where there is no such default — a contour at particular levels, a lag
+#' of some other number of steps, a forward Lyapunov exponent — the step is left
+#' to the YAML, where the choice is made explicitly rather than guessed at.
 #'
 #' @param selected time-varying covariate names, as in `covariates.selected`
 #' @param bathymetry static covariate names, as in `covariates.bathymetry`
@@ -527,6 +529,12 @@ derivoce_choices <- function(selected, bathymetry = character()) {
     list(type = "lag_covariate", suffix = "_lag1", group = "Temporal",
          label = "%s one month earlier", expensive = FALSE,
          step = function(v) list(type = "lag_covariate", vars = v, n = 1)),
+    # Twelve monthly steps back is the same month a year earlier, which asks a
+    # different question from last month: whether conditions a full cycle ago
+    # set up this year's population, rather than whether last month fed it.
+    list(type = "lag_covariate", suffix = "_lag12", group = "Temporal",
+         label = "%s one year earlier", expensive = FALSE,
+         step = function(v) list(type = "lag_covariate", vars = v, n = 12)),
     list(type = "integrate_covariate", suffix = "_int", group = "Temporal",
          label = "%s accumulated since January", expensive = FALSE,
          step = function(v) list(type = "integrate_covariate", vars = v,
@@ -561,6 +569,20 @@ derivoce_choices <- function(selected, bathymetry = character()) {
     out[[length(out) + 1]] <- candidate(
       "EKE", "Eddy kinetic energy", "Flow",
       list(type = "eke")
+    )
+    # Backward rather than forward, because backward finds the attracting
+    # structures where water converges and plankton accumulate, which is the
+    # question a habitat model is asking. Forward finds transport barriers, and
+    # wanting those is a deliberate enough choice to belong in the YAML.
+    out[[length(out) + 1]] <- candidate(
+      "backward_ftle", "Attracting structures, FTLE (14-day)", "Flow",
+      list(type = "ftle", direction = "backward", integration_days = 14),
+      expensive = TRUE
+    )
+    out[[length(out) + 1]] <- candidate(
+      "backward_fsle", "Attracting structures, FSLE (50 km)", "Flow",
+      list(type = "fsle", direction = "backward", final_separation = 50),
+      expensive = TRUE
     )
   }
   if ("DEPTH" %in% bathymetry) {

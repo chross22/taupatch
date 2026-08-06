@@ -17,6 +17,7 @@ generate_config(
   selected = c("SST", "SSS", "BOTT", "MLD", "CHL"),
   bathymetry = c("DEPTH", "SLOPE"),
   prejoin = list(),
+  climate = character(),
   derivoce = list(),
   transform = list(log1p = c("CHL", "DEPTH")),
   normalize = TRUE,
@@ -52,6 +53,8 @@ the original database (\code{cfin}, \code{ctyp}, \code{pseudo}) at the 90th perc
 
 \item{prejoin}{list of per-covariate steps applied before products are
 joined; see \code{\link[=prejoin_steps]{prejoin_steps()}}}
+
+\item{climate}{climate index names; see \code{\link[=climate_index_covariates]{climate_index_covariates()}}}
 
 \item{derivoce}{list of derived-covariate steps; see \code{\link[=derivoce_covariates]{derivoce_covariates()}}}
 

@@ -101,8 +101,14 @@ model_types <- function() {
         args <- list(select_features = isTRUE(config$model$select_features))
         if (tuning) args$adjust_deg_free <- tune::tune()
 
+        # method and family reach mgcv::gam() through the engine rather than
+        # through parsnip, which has no argument for either.
+        engine <- list(method = config$model$method %||% "GCV.Cp",
+                       family = gam_family(config$model$family))
+
         do.call(parsnip::gen_additive_mod, args) |>
-          parsnip::set_engine("mgcv") |>
+          (\(spec) do.call(parsnip::set_engine,
+                           c(list(spec, "mgcv"), engine)))() |>
           parsnip::set_mode("classification")
       }
     )
@@ -190,6 +196,56 @@ check_model_packages <- function(type) {
   invisible(TRUE)
 }
 
+#' Smoothing parameter estimation methods mgcv offers
+#'
+#' `GCV.Cp` is mgcv's default and what the package has always used. `REML` and
+#' `ML` are the ones to reach for when a smooth looks overfitted: generalized
+#' cross-validation is known to undersmooth, and REML resists it.
+#'
+#' @return character vector of method names
+#' @examples
+#' gam_methods()
+#' @export
+gam_methods <- function() c("GCV.Cp", "REML", "ML", "P-REML", "P-ML")
+
+#' Spline bases mgcv offers for a smooth
+#'
+#' What shape the smooth is built from. `tp` is the default thin-plate spline and
+#' suits almost everything. `ts` is the same with an extra shrinkage penalty, so
+#' a term that earns nothing can be shrunk out of the model altogether rather
+#' than left wiggling at one degree of freedom - the per-smooth equivalent of
+#' `select_features`. `cr` is a cheaper cubic regression spline, worth it on a
+#' large grid. `cc` is cyclic, which is the one that matters here: day of year
+#' should join up at the end of December rather than being free to jump.
+#'
+#' @return character vector of basis codes
+#' @examples
+#' gam_bases()
+#' @export
+gam_bases <- function() c("tp", "ts", "cr", "cc", "ps", "ds", "gp")
+
+#' The family a GAM is fitted with
+#'
+#' The response is a two-level factor, so the family is binomial and that is not
+#' a choice. What the config picks is the link. `logit` is the default and reads
+#' as log-odds; `cloglog` is asymmetric and is the one to consider when patches
+#' are rare, which they are here by construction.
+#'
+#' @param link a link name, or `NULL` for the default
+#' @return a `family` object
+#' @keywords internal
+gam_family <- function(link = NULL) {
+  link <- link %||% "logit"
+  allowed <- c("logit", "probit", "cloglog", "cauchit", "log")
+  if (!(link %in% allowed)) {
+    stop("model.family must be one of: ", paste(allowed, collapse = ", "),
+         ", got '", link, "'.\nThe family itself is binomial, since the ",
+         "response is presence or absence of a patch; this chooses its link.",
+         call. = FALSE)
+  }
+  stats::binomial(link = link)
+}
+
 #' Formula for a model type that needs one
 #'
 #' `mgcv` has to be told which terms are smooth, and `parsnip` passes that as a
@@ -204,15 +260,36 @@ check_model_packages <- function(type) {
 #' @param predictors predictor column names
 #' @return a formula, or `NULL` for types that do not need one
 #' @keywords internal
-model_formula <- function(type, model_data, predictors) {
+model_formula <- function(type, model_data, predictors, config = NULL) {
   if (!isTRUE(model_types()[[type]]$needs_formula)) return(NULL)
+
+  # [[ ]] rather than $: `$offset` partial-matches `offset_transform`,
+  # so a config with a transform and no offset would read the transform's
+  # name as the offset column.
+  basis <- config$model[["bs"]]
+  offset <- config$model[["offset"]]
 
   # mgcv's default basis is 10 functions, so a smooth needs more than 10
   # distinct values to be identifiable.
-  terms <- vapply(predictors, function(v) {
+  terms <- vapply(setdiff(predictors, offset), function(v) {
     distinct <- length(unique(stats::na.omit(model_data[[v]])))
-    if (distinct > 10) paste0("s(", v, ")") else v
+    if (distinct <= 10) return(v)
+    if (is.null(basis)) paste0("s(", v, ")") else paste0("s(", v, ", bs = \"", basis, "\")")
   }, character(1))
+
+  # An offset enters with its coefficient fixed at 1 rather than estimated, so
+  # it is a term the model is told rather than one it fits. It must not also be
+  # a smooth, or the same column would be counted twice.
+  if (!is.null(offset)) {
+    if (!(offset %in% names(model_data))) {
+      stop("model.offset names '", offset, "', which is not among the ",
+           "predictors.\nAvailable: ", paste(predictors, collapse = ", "),
+           call. = FALSE)
+    }
+    transform <- config$model[["offset_transform"]] %||% "none"
+    term <- if (identical(transform, "log")) paste0("log(", offset, ")") else offset
+    terms <- c(terms, paste0("offset(", term, ")"))
+  }
 
   stats::as.formula(paste("patch ~", paste(terms, collapse = " + ")))
 }

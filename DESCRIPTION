@@ -44,6 +44,7 @@ Suggests:
     mgcv,
     marmap,
     shiny,
+    shinyFiles,
     testthat (>= 3.0.0)
 Remotes:
     chross22/datamatch,

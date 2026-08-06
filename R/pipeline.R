@@ -48,6 +48,11 @@ run_taupatch <- function(config_path, project = TRUE) {
   message("Matching covariates to stations...")
   dat <- attach_covariates(dat, env_dat, config)
   dat <- add_derived_covariates(dat, config)
+  if (length(config$covariates$climate) > 0) {
+    message("Attaching climate indices (", paste(config$covariates$climate,
+                                                 collapse = ", "), ")...")
+    dat <- attach_climate_indices(dat, config)
+  }
   if (!is.null(bathy)) {
     dat <- datamatch::attach_bathymetry(dat, bathy, config$covariates$bathymetry)
     # Stations on land or outside the bathymetry grid get NA depth; they cannot

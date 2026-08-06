@@ -23,11 +23,13 @@ selection of fetched covariates into the concrete derived covariates that can
 be built from it, each already carrying the config step that produces it.
 }
 \details{
-This is the app's covariate picker, and it is deliberately a subset of what a
-config can express. Steps needing a choice with no sensible default — the
-Lyapunov exponents, a contour at particular levels, a lag of other than one
-step — are left to the YAML, where the choice can be made explicitly rather
-than guessed at.
+This is the app's covariate picker, and it is a subset of what a config can
+express. Where a step has a defensible default it is offered with it: the
+Lyapunov exponents are offered backward, which finds the attracting
+structures where water converges, since that is the question a habitat model
+asks. Where there is no such default — a contour at particular levels, a lag
+of some other number of steps, a forward Lyapunov exponent — the step is left
+to the YAML, where the choice is made explicitly rather than guessed at.
 }
 \examples{
 choices <- derivoce_choices(c("SST", "BOTT", "CHL"))

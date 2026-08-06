@@ -184,3 +184,43 @@ resolve_covariate_specs <- function(selected) {
     )
   })
 }
+
+#' Climate indices selectable as covariates
+#'
+#' Basin-scale modes of variability — the NAO, the AMO and the rest — from
+#' [datamatch::climate_indices()], which owns them.
+#'
+#' Unlike everything else in the covariate catalog these have no spatial
+#' structure. One value per month applies to the whole study area, so an index
+#' cannot say where a patch is, only which years and seasons were unusual. That
+#' makes them useful for the interannual part of the signal and useless for the
+#' map: a projection differs between two months partly because the index differs,
+#' but the index shifts every cell by the same amount.
+#'
+#' @return a named list, one entry per index, each with `label`, `source`, and
+#'   `description`
+#' @examples
+#' names(climate_index_covariates())
+#' @export
+climate_index_covariates <- function() {
+  datamatch::climate_indices()
+}
+
+#' Attach the configured climate indices to a table
+#'
+#' Joined on year and month, since that is the resolution the indices are
+#' published at and the resolution this pipeline runs at.
+#'
+#' @param dat a data frame with year and month columns
+#' @param config a config list, as returned by `load_config()`
+#' @param year_col,month_col the columns to join on
+#' @return `dat` with one column per configured index
+#' @keywords internal
+attach_climate_indices <- function(dat, config, year_col = "year",
+                                   month_col = "month") {
+  indices <- config$covariates$climate
+  if (length(indices) == 0) return(dat)
+
+  datamatch::attach_climate_index(dat, indices, year_col = year_col,
+                                  month_col = month_col)
+}

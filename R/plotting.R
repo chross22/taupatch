@@ -490,3 +490,125 @@ plot_importance <- function(importance, path = NULL) {
   ggplot2::ggsave(path, plot = p, width = 6, height = 4, dpi = 150)
   invisible(path)
 }
+
+#' Map the stations, coloured by abundance
+#'
+#' Where the survey actually went, and where the animals were. Worth looking at
+#' before fitting anything: a study area drawn wider than the stations, a year
+#' that sampled only half the shelf, or an abundance field that is all zeros
+#' outside one corner are all visible here and invisible in a metrics table.
+#'
+#' @param dat station data from [load_zoop_data()]
+#' @param transform how to scale the colour; abundance spans orders of magnitude,
+#'   so the default is log1p
+#' @param path optional file to write the plot to instead of returning it
+#' @return a `ggplot` object, or `path` invisibly when writing
+#' @examples
+#' \dontrun{
+#' plot_station_map(load_zoop_data(config))
+#' }
+#' @export
+plot_station_map <- function(dat, transform = c("log1p", "none"), path = NULL) {
+  transform <- match.arg(transform)
+  dat <- dat[!is.na(dat$lon) & !is.na(dat$lat), ]
+  if (nrow(dat) == 0) stop("No stations with coordinates to map.", call. = FALSE)
+
+  dat$value <- if (transform == "log1p") log1p(dat$abundance) else dat$abundance
+  legend <- if (transform == "log1p") "log(1 + abundance)" else "Abundance"
+
+  p <- ggplot2::ggplot(dat, ggplot2::aes(x = .data$lon, y = .data$lat,
+                                          colour = .data$value)) +
+    ggplot2::geom_point(size = 1.4, alpha = 0.8) +
+    ggplot2::scale_colour_viridis_c(option = "viridis", name = legend) +
+    # Latitude and longitude are not the same distance, and a map drawn as if
+    # they were misrepresents where things are relative to each other.
+    ggplot2::coord_quickmap() +
+    ggplot2::labs(x = NULL, y = NULL) +
+    ggplot2::theme_minimal()
+
+  if (is.null(path)) return(p)
+  ggplot2::ggsave(path, plot = p, width = 7, height = 6, dpi = 150)
+  invisible(path)
+}
+
+#' Abundance over the record
+#'
+#' One point per station against its date, with the annual median through it.
+#' Shows the seasonal cycle, the interannual swings, and the gaps in the record
+#' at once.
+#'
+#' @param dat station data from [load_zoop_data()]
+#' @param by whether to plot against year or day of year
+#' @param path optional file to write the plot to instead of returning it
+#' @return a `ggplot` object, or `path` invisibly when writing
+#' @examples
+#' \dontrun{
+#' plot_station_series(load_zoop_data(config))
+#' }
+#' @export
+plot_station_series <- function(dat, by = c("year", "season"), path = NULL) {
+  by <- match.arg(by)
+  dat <- dat[!is.na(dat$abundance), ]
+  if (nrow(dat) == 0) stop("No abundances to plot.", call. = FALSE)
+
+  dat$x <- if (by == "year") dat$year else dat$month
+  summary <- stats::aggregate(dat$abundance, by = list(x = dat$x), FUN = stats::median,
+                              na.rm = TRUE)
+  names(summary)[2] <- "median"
+
+  p <- ggplot2::ggplot(dat, ggplot2::aes(x = .data$x, y = .data$abundance)) +
+    ggplot2::geom_jitter(width = 0.2, alpha = 0.25, size = 1, colour = "#2c7fb8") +
+    ggplot2::geom_line(data = summary, ggplot2::aes(y = .data$median),
+                       linewidth = 0.7, colour = "#08306b") +
+    ggplot2::geom_point(data = summary, ggplot2::aes(y = .data$median),
+                        size = 1.8, colour = "#08306b") +
+    # Abundance is heavily right-skewed, so a linear axis is one cloud at the
+    # bottom and a handful of points far above it.
+    ggplot2::scale_y_continuous(trans = "log1p") +
+    ggplot2::labs(x = if (by == "year") NULL else "Month",
+                  y = "Abundance (log scale)") +
+    ggplot2::theme_minimal()
+
+  if (by == "season") {
+    p <- p + ggplot2::scale_x_continuous(breaks = 1:12, labels = month.abb)
+  }
+
+  if (is.null(path)) return(p)
+  ggplot2::ggsave(path, plot = p, width = 8, height = 4, dpi = 150)
+  invisible(path)
+}
+
+#' Summary of a station dataset
+#'
+#' The numbers worth knowing before fitting: how many stations, over what period
+#' and area, and how the abundances are distributed. The proportion of zeros is
+#' the one that most often explains a disappointing model.
+#'
+#' @param dat station data from [load_zoop_data()]
+#' @return a data frame of `quantity` and `value`
+#' @examples
+#' \dontrun{
+#' station_summary(load_zoop_data(config))
+#' }
+#' @export
+station_summary <- function(dat) {
+  abundance <- dat$abundance[!is.na(dat$abundance)]
+  quantiles <- stats::quantile(abundance, c(0.5, 0.9, 1), na.rm = TRUE,
+                                names = FALSE)
+
+  data.frame(
+    quantity = c("Stations", "Years", "Months sampled", "Longitude", "Latitude",
+                 "Median abundance", "90th percentile", "Maximum",
+                 "Zero or absent"),
+    value = c(
+      format(nrow(dat), big.mark = ","),
+      paste(range(dat$year, na.rm = TRUE), collapse = " to "),
+      paste(sort(unique(dat$month)), collapse = ", "),
+      paste(round(range(dat$lon, na.rm = TRUE), 2), collapse = " to "),
+      paste(round(range(dat$lat, na.rm = TRUE), 2), collapse = " to "),
+      signif(quantiles[1], 4), signif(quantiles[2], 4), signif(quantiles[3], 4),
+      paste0(round(100 * mean(abundance == 0), 1), "%")
+    ),
+    stringsAsFactors = FALSE
+  )
+}

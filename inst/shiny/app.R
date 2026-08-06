@@ -7,13 +7,36 @@ library(taupatch)
 # what someone typing "data/zoop.csv" means.
 is_absolute <- function(path) grepl("^(/|~|[A-Za-z]:[\\\\/])", path)
 
+# A collapsible sidebar block. The sidebar had grown to about six screens of
+# controls in one column, and a control you have to scroll past four times is
+# effectively hidden. <details> rather than a package's accordion: it collapses
+# natively, needs no dependency, and keeps the whole form in the DOM so nothing
+# reactive stops updating while a section is shut.
+sidebar_section <- function(title, ..., open = TRUE) {
+  tags$details(
+    class = "tp-section", open = if (open) NA else NULL,
+    tags$summary(title), div(class = "tp-section-body", ...)
+  )
+}
+
 # Drops the trailing ".0" that a 0.01-step slider otherwise produces, so the
 # note reads "top 15%" rather than "top 15.0%".
 format_percent <- function(x) format(round(x, 1), trim = TRUE, drop0trailing = TRUE)
 
 # Config values the launcher passes through, so the app opens on a sensible
 # starting config rather than an empty form.
+#
+# Falls back to the shipped mock config when the option is unset, which is the
+# case when this directory is run directly - `shiny::runApp("inst/shiny")` after
+# load_all(), the usual way to iterate on the app without reinstalling. Without
+# the fallback every base_config$... is NULL and the first sliderInput() fails
+# with a message that says nothing about the real cause.
 base_config <- getOption("taupatch.app_config")
+if (is.null(base_config)) {
+  fallback <- system.file("configs", "mock_test.yaml", package = "taupatch")
+  if (!nzchar(fallback)) fallback <- "../configs/mock_test.yaml"
+  base_config <- taupatch::load_config(fallback)
+}
 
 # "SST - Sea surface temperature (degrees C)" in the dropdown, "SST" as the value.
 covariate_labels <- function(info) {
@@ -30,6 +53,14 @@ covariate_choices <- covariate_labels(
 )
 bathymetry_choices <- covariate_labels(
   covariate_reference[covariate_reference$name %in% bathymetry_names, ]
+)
+
+# "NAO - North Atlantic Oscillation" in the dropdown, "NAO" as the value.
+climate_catalog <- climate_index_covariates()
+climate_choices <- stats::setNames(
+  names(climate_catalog),
+  paste0(names(climate_catalog), " - ",
+         vapply(climate_catalog, function(e) e$label, character(1)))
 )
 
 # "rf - Random forest" in the dropdown, "rf" as the value.
@@ -60,20 +91,45 @@ app_transform <- function(config) {
 
 ui <- fluidPage(
   tags$head(tags$style(HTML("
+    /* A tiled copy of the header photo, dropped almost all the way out, over a
+       soft gradient. Subtle enough to read as texture rather than as a second
+       image competing with the one beside the title. */
     .tp-header { display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
-                 padding: 12px 0 16px; border-bottom: 1px solid #e3e3e3;
-                 margin-bottom: 18px; }
+                 position: relative; overflow: hidden;
+                 padding: 16px 20px; margin-bottom: 18px;
+                 border: 1px solid #dce6ec; border-radius: 8px;
+                 background: linear-gradient(135deg, #eaf3f8 0%, #f8fbfd 55%,
+                                             #e9f1f6 100%); }
+    .tp-header::after { content: ''; position: absolute; inset: 0;
+                        background-image: url('calanus.jpg');
+                        background-size: 170px; background-repeat: repeat;
+                        opacity: 0.05; pointer-events: none; }
+    .tp-header > * { position: relative; z-index: 1; }
     .tp-header-figure { margin: 0; flex: 0 0 auto; }
     /* Cropped to a banner strip and biased upward, so the copepod's body fills
        the frame rather than the empty background below it. */
     .tp-header-photo { height: 78px; width: 220px; object-fit: cover;
-                       object-position: 50% 40%; border-radius: 4px;
-                       display: block; }
-    .tp-header-credit { font-size: 10px; color: #888; margin-top: 3px;
+                       object-position: 50% 40%; border-radius: 6px;
+                       display: block;
+                       box-shadow: 0 1px 4px rgba(20, 60, 80, 0.18); }
+    .tp-header-credit { font-size: 10px; color: #7b8a93; margin-top: 3px;
                         line-height: 1.3; max-width: 220px; }
-    .tp-header-title { margin: 0; font-size: 26px; }
-    .tp-header-sub { color: #666; margin: 4px 0 0; font-size: 14px; }
+    .tp-header-title { margin: 0; font-size: 28px; letter-spacing: -0.4px;
+                       color: #14343f; }
+    .tp-header-sub { color: #55707c; margin: 5px 0 0; font-size: 14px; }
     @media (max-width: 700px) { .tp-header-photo { width: 100%; } }
+
+    .tp-section { border-bottom: 1px solid #e3e3e3; padding: 2px 0 6px; }
+    .tp-section > summary { cursor: pointer; font-size: 15px; font-weight: 600;
+                            padding: 8px 2px; list-style: none;
+                            display: flex; align-items: center; gap: 6px; }
+    .tp-section > summary::-webkit-details-marker { display: none; }
+    .tp-section > summary::before { content: \"\\25B8\"; color: #888;
+                                     transition: transform 0.12s; }
+    .tp-section[open] > summary::before { transform: rotate(90deg); }
+    .tp-section > summary:hover { color: #2c7fb8; }
+    .tp-section-body { padding: 2px 2px 8px; }
+    .tp-section-body .form-group { margin-bottom: 10px; }
   "))),
 
   # ionRangeSlider measures its track when it initializes. A slider created by
@@ -130,105 +186,153 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       width = 3,
-      h4("Data"),
-      textInput("zoop_path", "Path to a CSV on this machine",
-                value = "", placeholder = "data/zooplankton_database.csv"),
-      uiOutput("data_status"),
+      sidebar_section(
+        "Data",
+        textInput("zoop_path", "Path to a CSV on this machine",
+                  value = "", placeholder = "data/zooplankton_database.csv"),
+        if (requireNamespace("shinyFiles", quietly = TRUE)) {
+          shinyFiles::shinyFilesButton("zoop_browse", "Browse...",
+                                       title = "Choose a zooplankton CSV",
+                                       multiple = FALSE, class = "btn-sm")
+        },
+        div(style = "height: 8px;"),
+        uiOutput("data_status")
+      ),
 
-      hr(),
-      h4("Species"),
-      selectInput("species", "Species", choices = names(base_config$species$catalog),
-                  selected = base_config$species$active),
-      uiOutput("stage_picker"),
-      selectInput("threshold_type", "Threshold type",
-                  choices = c("percentile", "absolute"),
-                  selected = base_config$species$resolved$threshold$type),
-      uiOutput("threshold_input"),
+      sidebar_section(
+        "Species",
+        # Choices come from the loaded file rather than the config catalog: an
+        # export carries most of a hundred taxa and any of them can be modelled.
+        selectInput("species", "Species", choices = names(base_config$species$catalog),
+                    selected = base_config$species$active),
+        uiOutput("stage_picker"),
+        selectInput("threshold_type", "Threshold type",
+                    choices = c("percentile", "absolute"),
+                    selected = base_config$species$resolved$threshold$type),
+        uiOutput("threshold_input")
+      ),
 
-      hr(),
-      h4("Training window"),
-      helpText("Which observations the model is fitted on."),
-      sliderInput("years", "Years",
-                  min = 1977, max = as.integer(format(Sys.Date(), "%Y")),
-                  value = base_config$dates$years, step = 1, sep = ""),
-      sliderInput("months", "Months", min = 1, max = 12,
-                  value = base_config$dates$months, step = 1),
-
-      hr(),
-      h4("Projection window"),
-      helpText("Which months are mapped. Need not match the training window -",
-               "fitting on a long history and projecting a recent period is normal."),
-      checkboxInput("projection_same", "Same as training window",
-                    value = identical(base_config$projection$years, base_config$dates$years) &&
-                      identical(base_config$projection$months, base_config$dates$months)),
-      conditionalPanel(
-        "!input.projection_same",
-        sliderInput("proj_years", "Years",
+      sidebar_section(
+        "Training window", open = FALSE,
+        helpText("Which observations the model is fitted on."),
+        sliderInput("years", "Years",
                     min = 1977, max = as.integer(format(Sys.Date(), "%Y")),
-                    value = base_config$projection$years, step = 1, sep = ""),
-        sliderInput("proj_months", "Months", min = 1, max = 12,
-                    value = base_config$projection$months, step = 1)
+                    value = base_config$dates$years, step = 1, sep = ""),
+        sliderInput("months", "Months", min = 1, max = 12,
+                    value = base_config$dates$months, step = 1)
       ),
 
-      hr(),
-      h4("Study area"),
-      fluidRow(
-        column(6, numericInput("xmin", "West", base_config$study_area$bbox$xmin)),
-        column(6, numericInput("xmax", "East", base_config$study_area$bbox$xmax))
-      ),
-      fluidRow(
-        column(6, numericInput("ymin", "South", base_config$study_area$bbox$ymin)),
-        column(6, numericInput("ymax", "North", base_config$study_area$bbox$ymax))
+      sidebar_section(
+        "Projection window", open = FALSE,
+        helpText("Which months are mapped. Need not match the training window -",
+                 "fitting on a long history and projecting a recent period is normal."),
+        checkboxInput("projection_same", "Same as training window",
+                      value = identical(base_config$projection$years, base_config$dates$years) &&
+                        identical(base_config$projection$months, base_config$dates$months)),
+        conditionalPanel(
+          "!input.projection_same",
+          sliderInput("proj_years", "Years",
+                      min = 1977, max = as.integer(format(Sys.Date(), "%Y")),
+                      value = base_config$projection$years, step = 1, sep = ""),
+          sliderInput("proj_months", "Months", min = 1, max = 12,
+                      value = base_config$projection$months, step = 1)
+        )
       ),
 
-      hr(),
-      h4("Model"),
-      selectInput("model_type", "Type", choices = model_type_choices,
-                  selected = taupatch:::resolve_model_type(base_config)),
-      uiOutput("model_type_note"),
-      # Trees mean nothing to a GLM or a GAM, so the control is not offered
-      # for them rather than being offered and ignored.
-      conditionalPanel(
-        "input.model_type == 'rf' || input.model_type == 'brt'",
-        numericInput("trees", "Trees", value = base_config$model$trees, min = 1)
+      sidebar_section(
+        "Study area", open = FALSE,
+        fluidRow(
+          column(6, numericInput("xmin", "West", base_config$study_area$bbox$xmin)),
+          column(6, numericInput("xmax", "East", base_config$study_area$bbox$xmax))
+        ),
+        fluidRow(
+          column(6, numericInput("ymin", "South", base_config$study_area$bbox$ymin)),
+          column(6, numericInput("ymax", "North", base_config$study_area$bbox$ymax))
+        )
       ),
-      numericInput("cv_folds", "CV folds", value = base_config$model$cv_folds, min = 2),
 
-      hr(),
-      h4("Covariates"),
-      uiOutput("covariate_label"),
-      selectInput("covariates", NULL, multiple = TRUE,
-                  choices = covariate_choices,
-                  selected = base_config$covariates$selected %||% c("SST", "SSS")),
-      # character(0), not NULL: with NULL, selectize falls back to selecting the
-      # first choice, which would silently opt every run into a NOAA download.
-      selectInput("bathymetry", "Seafloor (static)", multiple = TRUE,
-                  choices = bathymetry_choices,
-                  selected = base_config$covariates$bathymetry %||% character(0)),
-      # Choices depend on what is selected above, so they are filled in by an
-      # observer rather than listed here.
-      selectInput("derived", "Derived", multiple = TRUE, choices = character(0),
-                  selected = character(0)),
-      uiOutput("derived_note"),
-      # Choices are narrowed to what is actually selected above, by the observer
-      # in the server. Offering unselected covariates here would let a config
-      # name a transform for something the run never fetches, which config
-      # validation rejects.
-      selectInput("transform_vars", "Transform", multiple = TRUE,
-                  choices = character(0),
-                  selected = app_transform(base_config)$vars),
-      conditionalPanel(
-        "input.transform_vars && input.transform_vars.length > 0",
-        selectInput("transform_type", NULL, choices = transform_choices,
-                    selected = app_transform(base_config)$type)
+      sidebar_section(
+        "Covariates",
+        uiOutput("covariate_label"),
+        selectInput("covariates", NULL, multiple = TRUE,
+                    choices = covariate_choices,
+                    selected = base_config$covariates$selected %||% c("SST", "SSS")),
+        # character(0), not NULL: with NULL, selectize falls back to selecting the
+        # first choice, which would silently opt every run into a NOAA download.
+        selectInput("bathymetry", "Seafloor (static)", multiple = TRUE,
+                    choices = bathymetry_choices,
+                    selected = base_config$covariates$bathymetry %||% character(0)),
+        # Choices depend on what is selected above, so they are filled in by an
+        # observer rather than listed here.
+        selectInput("derived", "Derived", multiple = TRUE, choices = character(0),
+                    selected = character(0)),
+        uiOutput("derived_note"),
+        selectInput("climate", "Climate indices", multiple = TRUE,
+                    choices = climate_choices,
+                    selected = base_config$covariates$climate %||% character(0)),
+        uiOutput("climate_note"),
+        # An offset is a GAM term, so offering it for the others would be
+        # offering something that could not be used.
+        conditionalPanel(
+          "input.model_type == 'gam'",
+          selectInput("offset", "Offset (GAM)", choices = c("none" = ""),
+                      selected = ""),
+          conditionalPanel(
+            "input.offset != ''",
+            selectInput("offset_transform", NULL,
+                        choices = c("as is" = "none", "log" = "log"),
+                        selected = "log")
+          ),
+          helpText("A term entered with its coefficient fixed at 1 rather than",
+                   "estimated - sampling effort, or volume filtered. It is on",
+                   "the link scale, so log is usually what you want.")
+        ),
+        # Choices are narrowed to what is actually selected above, by the observer
+        # in the server. Offering unselected covariates here would let a config
+        # name a transform for something the run never fetches, which config
+        # validation rejects.
+        selectInput("transform_vars", "Transform", multiple = TRUE,
+                    choices = character(0),
+                    selected = app_transform(base_config)$vars),
+        conditionalPanel(
+          "input.transform_vars && input.transform_vars.length > 0",
+          selectInput("transform_type", NULL, choices = transform_choices,
+                      selected = app_transform(base_config)$type)
+        ),
+        checkboxInput("normalize", "Centre and scale predictors",
+                      value = !isFALSE(base_config$covariates$normalize)),
+        actionLink("show_dictionary", "Covariate dictionary \u2192"),
+        helpText("Units, resolutions, and definitions for every covariate.")
       ),
-      checkboxInput("normalize", "Centre and scale predictors",
-                    value = !isFALSE(base_config$covariates$normalize)),
-      helpText("Seafloor covariates are downloaded once from NOAA ETOPO and do",
-               "not vary in time. Day of year is always included, and is what",
-               "makes one model produce month-specific maps."),
-      actionLink("show_dictionary", "Covariate dictionary →"),
-      helpText("Units, resolutions, and definitions for every covariate."),
+
+      sidebar_section(
+        "Model",
+        selectInput("model_type", "Type", choices = model_type_choices,
+                    selected = taupatch:::resolve_model_type(base_config)),
+        uiOutput("model_type_note"),
+        # Trees mean nothing to a GLM or a GAM, so the control is not offered
+        # for them rather than being offered and ignored.
+        conditionalPanel(
+          "input.model_type == 'rf' || input.model_type == 'brt'",
+          numericInput("trees", "Trees", value = base_config$model$trees, min = 1)
+        ),
+        conditionalPanel(
+          "input.model_type == 'gam'",
+          selectInput("gam_bs", "Spline basis", choices = gam_bases(),
+                      selected = base_config$model$bs %||% "tp"),
+          selectInput("gam_method", "Smoothing method", choices = gam_methods(),
+                      selected = base_config$model$method %||% "GCV.Cp"),
+          selectInput("gam_family", "Link",
+                      choices = c("logit", "probit", "cloglog", "cauchit", "log"),
+                      selected = base_config$model$family %||% "logit"),
+          checkboxInput("gam_select", "Let smooths shrink to zero",
+                        value = isTRUE(base_config$model$select_features)),
+          helpText("The family is binomial - the response is patch or not - so",
+                   "the choice is its link. cloglog is asymmetric, which suits a",
+                   "rare positive class.")
+        ),
+        numericInput("cv_folds", "CV folds", value = base_config$model$cv_folds, min = 2)
+      ),
 
       hr(),
       actionButton("run", "Run model", class = "btn-primary", width = "100%"),
@@ -243,7 +347,52 @@ ui <- fluidPage(
       width = 9,
       tabsetPanel(
         id = "main_tabs",
-        tabPanel("Config", br(), verbatimTextOutput("config_yaml")),
+tabPanel("Config", br(), verbatimTextOutput("config_yaml")),
+        tabPanel("Zooplankton data", br(),
+                 p("The stations themselves, before any model touches them.",
+                   "A study area drawn wider than the survey, a year that",
+                   "sampled half the shelf, or an abundance field that is mostly",
+                   "zeros are all visible here and invisible in a metrics table."),
+                 uiOutput("zoop_status"),
+                 fluidRow(
+                   column(5,
+                          h4("Summary"),
+                          tableOutput("zoop_summary")),
+                   column(7,
+                          h4("Where the stations are"),
+                          helpText("Coloured by abundance on a log scale, since",
+                                   "it spans orders of magnitude."),
+                          plotOutput("zoop_map", height = "420px"))
+                 ),
+                 br(),
+                 h4("Abundance over the record"),
+                 radioButtons("zoop_series_by", NULL, inline = TRUE,
+                              choices = c("By year" = "year",
+                                          "By month" = "season"),
+                              selected = "year"),
+                 plotOutput("zoop_series", height = "320px"),
+                 br(),
+                 h4("Distribution"),
+                 helpText("The threshold that separates patch from non-patch is",
+                          "drawn on, so you can see how much of the data falls",
+                          "either side of it before fitting."),
+                 plotOutput("zoop_distribution", height = "300px")),
+        tabPanel("Covariate trends", br(),
+                 p("Study-area mean of each covariate over the run's period."),
+                 uiOutput("heatmap_controls"),
+                 plotOutput("covariate_heatmap", height = "480px"),
+                 br(),
+                 h4("Seasonal cycle"),
+                 helpText("Each year drawn as its own line, so a year that",
+                          "departs from the usual cycle stands out and a gap in",
+                          "the record reads as a missing line rather than as a",
+                          "value."),
+                 plotOutput("covariate_seasonal", height = "360px"),
+                 br(),
+                 h4("Year to year"),
+                 helpText("Annual mean across the selected months, which is the",
+                          "view that shows drift over the record."),
+                 plotOutput("covariate_annual", height = "300px")),
         tabPanel("Results", br(),
                  h4("Cross-validated performance"),
                  helpText("Threshold-dependent metrics are shown at both the",
@@ -268,32 +417,12 @@ ui <- fluidPage(
                  ),
                  br(),
                  h4("Partial effects"),
-                 helpText("What each predictor does to patch probability, with",
-                          "the others held at the values they actually take.",
-                          "Importance says a predictor matters; this says which",
-                          "way. Computed the same way for every model type, so",
-                          "the curves can be compared across them."),
-                 plotOutput("partial_effects", height = "420px"),
+                 uiOutput("partial_effects_note"),
+                 plotOutput("partial_effects", height = "460px"),
                  uiOutput("model_specific")),
         tabPanel("Maps", br(),
                  uiOutput("map_controls"),
                  leaflet::leafletOutput("map", height = "600px")),
-        tabPanel("Covariate trends", br(),
-                 p("Study-area mean of each covariate over the run's period."),
-                 uiOutput("heatmap_controls"),
-                 plotOutput("covariate_heatmap", height = "480px"),
-                 br(),
-                 h4("Seasonal cycle"),
-                 helpText("Each year drawn as its own line, so a year that",
-                          "departs from the usual cycle stands out and a gap in",
-                          "the record reads as a missing line rather than as a",
-                          "value."),
-                 plotOutput("covariate_seasonal", height = "360px"),
-                 br(),
-                 h4("Year to year"),
-                 helpText("Annual mean across the selected months, which is the",
-                          "view that shows drift over the record."),
-                 plotOutput("covariate_annual", height = "300px")),
         tabPanel("Log", br(), verbatimTextOutput("log")),
         # Last, and reached from the sidebar link, because it is reference
         # material consulted while choosing covariates rather than a step in
@@ -314,8 +443,59 @@ server <- function(input, output, session) {
   # The database's stage columns differ per species - cfin carries CI..CVI while
   # ctyp and pseudo carry `adult` and combination columns - so the choices are
   # read from the data rather than from a fixed CI-CVI list.
+  # Every taxon the loaded file carries, not only the ones the config was set
+  # up for. A formatted export holds the whole survey.
+  file_species <- reactive({
+    if (!file.exists(zoop_path())) {
+      return(data.frame(species = character(), form = character(),
+                        stages = character(), stringsAsFactors = FALSE))
+    }
+    tryCatch(available_species(zoop_path()),
+             error = function(e) data.frame(species = character(),
+                                            form = character(),
+                                            stages = character(),
+                                            stringsAsFactors = FALSE))
+  })
+
+  observe({
+    catalog <- names(base_config$species$catalog)
+    from_file <- setdiff(file_species()$species, catalog)
+
+    # The three the model is normally run on first, everything else the file
+    # carries behind them. selectize makes the long tail searchable, which is
+    # the only way ninety taxa are usable in a dropdown.
+    choices <- if (length(from_file) > 0) {
+      list(Common = catalog, `Other taxa in this file` = sort(from_file))
+    } else {
+      catalog
+    }
+    selected <- isolate(input$species) %||% base_config$species$active
+    if (!(selected %in% c(catalog, from_file))) selected <- catalog[1]
+
+    updateSelectInput(session, "species", choices = choices, selected = selected)
+  })
+
+  # A species named by the config keeps its catalog entry. One found only in the
+  # file gets an entry built for it, in whichever form its columns support.
+  species_entry <- reactive({
+    req(input$species)
+    known <- base_config$species$catalog[[input$species]]
+    if (!is.null(known)) return(known)
+
+    found <- file_species()
+    row <- found[found$species == input$species, ]
+    threshold <- list(type = input$threshold_type,
+                      value = input$threshold_value)
+
+    if (nrow(row) == 1 && identical(row$form, "stages")) {
+      list(column_prefix = input$species, threshold = threshold)
+    } else {
+      list(abundance_column = input$species, threshold = threshold)
+    }
+  })
+
   species_prefix <- reactive({
-    entry <- base_config$species$catalog[[input$species]]
+    entry <- species_entry()
     entry$column_prefix %||% input$species
   })
 
@@ -323,6 +503,24 @@ server <- function(input, output, session) {
   # pointed at - the mock database for a default session. Everything that reads
   # the station data goes through here rather than at base_config directly, so
   # an upload takes effect everywhere at once.
+  # Browsing the machine the app is running on, which locally is this one. The
+  # button fills the path box rather than being a second source of truth, so
+  # everything downstream still reads one place.
+  if (requireNamespace("shinyFiles", quietly = TRUE)) {
+    volumes <- c("Working directory" = getwd(),
+                 Home = path.expand("~"),
+                 shinyFiles::getVolumes()())
+    shinyFiles::shinyFileChoose(input, "zoop_browse", roots = volumes,
+                                filetypes = c("csv", "CSV"))
+    observeEvent(input$zoop_browse, {
+      chosen <- shinyFiles::parseFilePaths(volumes, input$zoop_browse)
+      if (nrow(chosen) > 0) {
+        updateTextInput(session, "zoop_path",
+                        value = as.character(chosen$datapath[1]))
+      }
+    }, ignoreInit = TRUE)
+  }
+
   # A path rather than a browser upload. The station database is read where it
   # already is, which keeps a downloaded config usable afterwards - an uploaded
   # copy would live in a per-session temporary directory and be gone tomorrow.
@@ -339,6 +537,10 @@ server <- function(input, output, session) {
   stage_choices <- reactive({
     req(input$species)
     if (!file.exists(zoop_path())) return(character())
+    found <- file_species()
+    row <- found[found$species == input$species, ]
+    # Only a taxon whose columns carry stages has any to offer.
+    if (nrow(row) == 1 && !identical(row$form, "stages")) return(character())
     tryCatch(available_stages(zoop_path(), species_prefix()),
              error = function(e) character())
   })
@@ -488,7 +690,18 @@ server <- function(input, output, session) {
     req(input$threshold_value)
     config <- base_config
     config$paths$zoop_file <- zoop_path()
+
+    # The shipped config filters to ECOMON, which needs a `dataset` column. A
+    # formatted export has none - the raw file does not carry one - so the
+    # filter is dropped rather than failing validation on a column that was
+    # never going to be there.
+    if (!("dataset" %in% (data_header() %||% character()))) {
+      config$columns$dataset_filter <- NULL
+    }
     config$species$active <- input$species
+    # A species found only in the data has no catalog entry yet, so one is put
+    # there before the threshold is set on it.
+    config$species$catalog[[input$species]] <- species_entry()
     config$species$catalog[[input$species]]$threshold <- list(
       type = input$threshold_type, value = input$threshold_value
     )
@@ -512,6 +725,25 @@ server <- function(input, output, session) {
     config$study_area$bbox <- list(xmin = input$xmin, xmax = input$xmax,
                                     ymin = input$ymin, ymax = input$ymax)
     config$model$type <- input$model_type
+    config$model$bs <- if (identical(input$model_type, "gam")) input$gam_bs
+    config$model$method <- if (identical(input$model_type, "gam")) input$gam_method
+    config$model$family <- if (identical(input$model_type, "gam")) input$gam_family
+    config$model$select_features <- isTRUE(input$gam_select) &&
+      identical(input$model_type, "gam")
+
+    # Only a GAM takes one, and only a column the run will have. Cleared
+    # otherwise, so switching model type does not leave a stale term behind
+    # that predictor_names() would then quietly drop.
+    offset <- input$offset %||% ""
+    config$model$offset <- if (identical(input$model_type, "gam") &&
+                               nzchar(offset)) {
+      offset
+    }
+    # Only set alongside an offset. On its own it would be partial-matched by
+    # any later `$offset` lookup and read as the offset column itself.
+    config$model$offset_transform <- if (!is.null(config$model[["offset"]])) {
+      input$offset_transform %||% "none"
+    }
     # An older config's `engine` would otherwise still be there and be read as
     # the type by anything reading the downloaded file.
     config$model$engine <- NULL
@@ -519,6 +751,7 @@ server <- function(input, output, session) {
     config$model$cv_folds <- input$cv_folds
     config$covariates$selected <- input$covariates
     config$covariates$bathymetry <- input$bathymetry %||% character()
+    config$covariates$climate <- input$climate %||% character()
 
     # Derived covariates are named by the column they produce; the config wants
     # the step that produces it. Rebuilt from the current selection rather than
@@ -541,7 +774,8 @@ server <- function(input, output, session) {
     # is never in that state to begin with.
     transform_vars <- intersect(
       input$transform_vars,
-      c(input$covariates, input$bathymetry, derivoce_names(config))
+      c(input$covariates, input$bathymetry, input$climate,
+        derivoce_names(config))
     )
     config$covariates$transform <- if (length(transform_vars) > 0) {
       stats::setNames(list(transform_vars), input$transform_type)
@@ -610,6 +844,69 @@ server <- function(input, output, session) {
   })
 
   output$log <- renderText(run_log())
+
+  # Loaded from whatever the sidebar currently points at, so the tab describes
+  # the data a run would use rather than the data the last run happened to use.
+  zoop_data <- reactive({
+    config <- current_config()
+    if (!file.exists(config$paths$zoop_file)) return(NULL)
+    tryCatch(load_zoop_data(config), error = function(e) conditionMessage(e))
+  })
+
+  output$zoop_status <- renderUI({
+    dat <- zoop_data()
+    if (is.null(dat)) {
+      return(helpText("No data file. Give a path in the sidebar."))
+    }
+    if (is.character(dat)) {
+      return(div(class = "text-danger", strong("Could not load: "), dat))
+    }
+    helpText(nrow(dat), " stations of ", strong(current_config()$species$active),
+             " after the date, area and species filters in the sidebar.")
+  })
+
+  # Everything below wants a loaded frame, so the guard is written once.
+  loaded_zoop <- reactive({
+    dat <- zoop_data()
+    validate(need(!is.null(dat) && !is.character(dat),
+                  "Load a zooplankton file to see this."))
+    dat
+  })
+
+  output$zoop_summary <- renderTable({
+    summary <- station_summary(loaded_zoop())
+    stats::setNames(summary, c("", ""))
+  })
+
+  output$zoop_map <- renderPlot(plot_station_map(loaded_zoop()))
+
+  output$zoop_series <- renderPlot({
+    plot_station_series(loaded_zoop(), by = input$zoop_series_by %||% "year")
+  })
+
+  output$zoop_distribution <- renderPlot({
+    dat <- loaded_zoop()
+    config <- current_config()
+    threshold <- tryCatch(
+      attr(label_patch(dat, config), "threshold"), error = function(e) NA_real_
+    )
+
+    p <- ggplot2::ggplot(dat, ggplot2::aes(x = .data$abundance)) +
+      ggplot2::geom_histogram(bins = 40, fill = "#2c7fb8", alpha = 0.85) +
+      ggplot2::scale_x_continuous(trans = "log1p") +
+      ggplot2::labs(x = "Abundance (log scale)", y = "Stations") +
+      ggplot2::theme_minimal()
+
+    if (is.finite(threshold)) {
+      p <- p +
+        ggplot2::geom_vline(xintercept = threshold, linetype = "dashed",
+                            colour = "#c0392b", linewidth = 0.7) +
+        ggplot2::annotate("text", x = threshold, y = Inf, hjust = -0.05,
+                          vjust = 1.6, colour = "#c0392b", size = 3.4,
+                          label = paste0("patch threshold ", signif(threshold, 4)))
+    }
+    p
+  })
 
   # One clickable row per covariate; clicking opens a modal with the full
   # definition rather than crowding the table with prose.
@@ -700,7 +997,35 @@ server <- function(input, output, session) {
     )
   })
 
+  # A GAM has its own partial effects, and they are better than the generic
+  # ones: read out of the fitted model rather than reconstructed by prediction,
+  # so they carry the uncertainty a partial dependence curve cannot.
+  use_fancygam <- reactive({
+    identical(run_result()$model$type, "gam") &&
+      requireNamespace("fancygam", quietly = TRUE)
+  })
+
+  output$partial_effects_note <- renderUI({
+    req(run_result())
+    if (isTRUE(use_fancygam())) {
+      return(helpText("The model's own smooths, with standard error bands and a",
+                      "rug showing where the data is, drawn by fancygam. The x",
+                      "axes are in standard deviations because the model was",
+                      "fitted on the centred and scaled predictors - turn off",
+                      "'Centre and scale' to read them in the covariate's own",
+                      "units."))
+    }
+    helpText("What each predictor does to patch probability, with the others",
+             "held at the values they actually take. Importance says a predictor",
+             "matters; this says which way. Computed the same way for every",
+             "model type, so the curves can be compared across them.")
+  })
+
   output$partial_effects <- renderPlot({
+    req(run_result())
+    if (isTRUE(use_fancygam())) {
+      return(suppressMessages(plot_gam_smooths(run_result()$model)))
+    }
     effects <- run_effects()
     validate(need(!is.null(effects) && nrow(effects) > 0,
                   "Partial effects are unavailable for this run."))
@@ -721,25 +1046,19 @@ server <- function(input, output, session) {
       ))
     }
     if (identical(model$type, "gam")) {
-      smooths <- if (requireNamespace("fancygam", quietly = TRUE)) {
-        tagList(
-          h4("Fitted smooths"),
-          helpText("The model's own smooths, with their standard error bands and",
-                   "a rug showing where the data is. These carry uncertainty,",
-                   "which the partial effect curves above cannot. The x axes are",
-                   "in standard deviations because the model was fitted on the",
-                   "centred and scaled predictors - turn off 'Centre and scale'",
-                   "to read them in the covariate's own units."),
-          plotOutput("gam_smooths", height = "460px")
-        )
-      }
+      # The smooths themselves are the partial effects panel above when
+      # fancygam is present, so they are not repeated here.
       return(tagList(
-        smooths,
         h4("Smooth terms"),
         helpText("Effective degrees of freedom per smooth. An edf of 1 means",
                  "the smooth collapsed to a straight line, so the flexibility",
                  "bought nothing there; larger values mean a real bend."),
-        tableOutput("gam_terms")
+        tableOutput("gam_terms"),
+        h4("Model summary"),
+        helpText("mgcv's own summary of the fitted model: the parametric terms,",
+                 "the approximate significance of each smooth, deviance",
+                 "explained, and the smoothing parameter selection score."),
+        verbatimTextOutput("gam_summary")
       ))
     }
     NULL
@@ -750,9 +1069,9 @@ server <- function(input, output, session) {
     plot_glm_coefficients(glm_coefficients(run_result()$model$workflow))
   })
 
-  output$gam_smooths <- renderPlot({
+  output$gam_summary <- renderPrint({
     req(run_result())
-    suppressMessages(plot_gam_smooths(run_result()$model))
+    summary(model_engine_fit(run_result()$model))
   })
 
   output$gam_terms <- renderTable({
@@ -873,6 +1192,31 @@ server <- function(input, output, session) {
     )
   })
 
+  # An offset has to be a column the data actually carries, and it is removed
+  # from the predictors when used, so it is offered from the same pool.
+  observe({
+    derived <- vapply(derived_candidates(), function(x) x$id, character(1))
+    available <- c(input$covariates, input$bathymetry,
+                   intersect(derived, input$derived %||% character()))
+
+    updateSelectInput(session, "offset",
+                      choices = c("none" = "", stats::setNames(available, available)),
+                      selected = if (isolate(input$offset) %in% available) {
+                        isolate(input$offset)
+                      } else "")
+  })
+
+  output$climate_note <- renderUI({
+    if (length(input$climate) == 0) {
+      return(helpText("Basin-scale modes: one value per month for the whole",
+                      "study area, downloaded from NOAA."))
+    }
+    helpText(class = "text-warning",
+             "An index has no spatial structure. It shifts every cell of a",
+             "month's map by the same amount, so it can say which years and",
+             "seasons were unusual but nothing about where a patch is.")
+  })
+
   # Keep the transform choices in step with what is actually selected above.
   # updateSelectInput rather than re-rendering the control, so an existing
   # selection survives; a selection that is no longer available is dropped, since
@@ -880,10 +1224,11 @@ server <- function(input, output, session) {
   observe({
     derived <- vapply(derived_candidates(), function(x) x$id, character(1))
     derived <- intersect(derived, input$derived %||% character())
-    available <- c(input$covariates, input$bathymetry, derived)
+    available <- c(input$covariates, input$bathymetry, derived, input$climate)
 
     labels <- c(covariate_choices, bathymetry_choices,
-                stats::setNames(derived, derived))
+                stats::setNames(derived, derived),
+                stats::setNames(names(climate_catalog), names(climate_catalog)))
     choices <- labels[labels %in% available]
 
     updateSelectInput(session, "transform_vars", choices = choices,

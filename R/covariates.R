@@ -349,7 +349,11 @@ covariate_grid <- function(env_dat, year, month, config) {
   grid$month <- month
   grid$day <- 15L
 
-  add_derived_covariates(grid, config)
+  grid <- add_derived_covariates(grid, config)
+  # An index is one value per month, so every cell of a month's grid gets the
+  # same one. That is what makes it useless for saying where a patch is and
+  # useful for saying which years were unusual.
+  attach_climate_indices(grid, config)
 }
 
 #' Add derived covariates
@@ -381,8 +385,11 @@ add_derived_covariates <- function(dat, config) {
 #' @return character vector of predictor column names
 #' @keywords internal
 predictor_names <- function(dat, config) {
+  # An offset enters the formula with its coefficient fixed at 1, so it is not
+  # something the model estimates and must not be handed over as a predictor.
   non_predictors <- c("lon", "lat", "LON", "LAT", "year", "month", "day",
-                      "dataset", "station", "abundance", "patch")
+                      "dataset", "station", "abundance", "patch",
+                      config$model[["offset"]])
   candidates <- setdiff(names(dat), non_predictors)
   candidates[vapply(dat[candidates], is.numeric, logical(1))]
 }

@@ -30,7 +30,7 @@ fit_patch_model <- function(dat, config) {
 
   # mgcv has to be told which terms are smooth, and parsnip passes that as a
   # formula. The other three take their predictors from the recipe.
-  formula <- model_formula(type, model_data, predictors)
+  formula <- model_formula(type, model_data, predictors, config)
   wf <- workflows::workflow() |>
     workflows::add_recipe(rec)
   wf <- if (is.null(formula)) {

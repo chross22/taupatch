@@ -231,3 +231,43 @@ test_that("missing structural columns are reported against what is present", {
   expect_error(format_zoop_data(raw), "LATITUDE")
   expect_error(format_zoop_data(raw), "Columns present")
 })
+
+test_that("a combination stage is flagged rather than read as a total", {
+  # CALANUS_FINMARCHICUS_CV_VI is neither CV nor a total, and read as a total it
+  # still produces a plausible number - which is why it has to be said out loud.
+  expect_warning(zoop_taxa("CALANUS_FINMARCHICUS_CV_VI_10M2"),
+                 "contains a stage marker")
+  expect_warning(zoop_taxa("CALANUS_FINMARCHICUS_CV_VI_10M2"), "CV_VI")
+
+  # A plain stage on the end is read, not warned about.
+  expect_silent(zoop_taxa("CALANUS_FINMARCHICUS_CV_10M2"))
+})
+
+test_that("a taxon name that prefixes another is flagged", {
+  # column_prefix matches "<prefix>_", so CALANUS would collect
+  # CALANUS_FINMARCHICUS's stage columns as if they were its own.
+  expect_warning(zoop_taxa(c("CALANUS_10M2", "CALANUS_FINMARCHICUS_CV_10M2")),
+                 "prefixes of others")
+})
+
+test_that("two columns resolving to one name is an error", {
+  # A warning would leave one column silently overwriting the other.
+  expect_error(zoop_taxa(c("TAXON_CV_10M2", "TAXON_CV_10M2")),
+               "resolve to the same name")
+})
+
+test_that("the real export header raises nothing", {
+  # A check that fires on ordinary data is worse than no check, so this is the
+  # case that matters: the actual ECOMON taxon columns must pass in silence.
+  header <- c("CALANUS_FINMARCHICUS_10M2", "CALANUS_HYPERBOREUS_10M2",
+              "CALANUS_SPP_10M2", "CALANIDAE_10M2", "NANNOCALANUS_MINOR_10M2",
+              "CENTROPAGES_TYPICUS_10M2", "CENTROPAGES_HAMATUS_10M2",
+              "PSEUDOCALANUS_SPP_10M2", "TEMORA_LONGICORNIS_10M2",
+              "METRIDIA_LUCENS_10M2", "OITHONA_SPP_10M2", "ONCAEA_SPP_10M2",
+              "PARAEUCHAETA_NORVEGICA_10M2", "EUPHAUSIACEA_10M2",
+              "CHAETOGNATHA_10M2", "APPENDICULARIA_10M2")
+
+  expect_silent(taxa <- zoop_taxa(header))
+  expect_equal(nrow(taxa), length(header))
+  expect_true(all(is.na(taxa$stage)))
+})

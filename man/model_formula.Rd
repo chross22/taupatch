@@ -4,7 +4,7 @@
 \alias{model_formula}
 \title{Formula for a model type that needs one}
 \usage{
-model_formula(type, model_data, predictors)
+model_formula(type, model_data, predictors, config = NULL)
 }
 \arguments{
 \item{type}{a model type name}

@@ -308,12 +308,25 @@ validate_covariates <- function(config) {
     }
   }
 
+  climate <- config$covariates$climate
+  if (length(climate) > 0) {
+    unknown <- setdiff(climate, names(climate_index_covariates()))
+    if (length(unknown) > 0) {
+      stop("Unknown climate index/indices in covariates.climate: ",
+           paste(unknown, collapse = ", "),
+           "\nAvailable: ",
+           paste(names(climate_index_covariates()), collapse = ", "),
+           call. = FALSE)
+    }
+  }
+
   validate_prejoin(config)
   validate_derivoce(config)
   # A gap-filling source does not survive the join, so it cannot be transformed
   # or named by a later step as though it were a predictor.
   validate_transforms(config, c(setdiff(selected, prejoin_dropped(config)),
                                 bathymetry, config$covariates$derived,
+                                config$covariates$climate,
                                 derivoce_names(config)))
   if (source == "local_netcdf" && is.null(config$paths$covariate_dir)) {
     stop("covariates.source is 'local_netcdf' but paths.covariate_dir is not set.",
@@ -419,6 +432,7 @@ validate_columns <- function(config) {
 #' @param bathymetry static seafloor covariate names; see [bathymetry_covariates()]
 #' @param prejoin list of per-covariate steps applied before products are
 #'   joined; see [prejoin_steps()]
+#' @param climate climate index names; see [climate_index_covariates()]
 #' @param derivoce list of derived-covariate steps; see [derivoce_covariates()]
 #' @param transform named list of transform to covariate names; see
 #'   [covariate_transforms()]
@@ -450,6 +464,7 @@ generate_config <- function(name,
                             selected = c("SST", "SSS", "BOTT", "MLD", "CHL"),
                             bathymetry = c("DEPTH", "SLOPE"),
                             prejoin = list(),
+                            climate = character(),
                             derivoce = list(),
                             transform = list(log1p = c("CHL", "DEPTH")),
                             normalize = TRUE,
@@ -462,6 +477,7 @@ generate_config <- function(name,
   # blocks the run actually uses.
   if (length(bathymetry) > 0) covariates$bathymetry <- as.character(bathymetry)
   if (length(prejoin) > 0) covariates$prejoin <- prejoin
+  if (length(climate) > 0) covariates$climate <- as.character(climate)
   covariates$derived <- "jday"
   if (length(derivoce) > 0) covariates$derivoce <- derivoce
   if (length(transform) > 0) covariates$transform <- transform

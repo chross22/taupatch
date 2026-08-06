@@ -137,7 +137,7 @@ zoop_taxa <- function(header, suffix = "_10M2",
   stage <- ifelse(staged, sub(paste0("^.*", stage_pattern), "\\1", bare),
                   NA_character_)
 
-  data.frame(
+  out <- data.frame(
     column = columns,
     taxon = taxon,
     stage = stage,
@@ -147,6 +147,65 @@ zoop_taxa <- function(header, suffix = "_10M2",
     name = ifelse(staged, paste0(taxon, "_", stage), taxon),
     stringsAsFactors = FALSE
   )
+
+  warn_ambiguous_taxa(out, stage_pattern)
+  out
+}
+
+#' Warn about taxon names this cannot read confidently
+#'
+#' Every rule for reading a taxon out of a column name is a guess about how the
+#' export was written, and the guesses fail quietly: a column read as a total
+#' when it is really a stage still produces a plausible number. These are the
+#' three ways it goes wrong that can be spotted from the names alone.
+#'
+#' @param taxa a [zoop_taxa()] table
+#' @param stage_pattern the pattern used to find stages
+#' @return `taxa`, invisibly; warns or errors as appropriate
+#' @keywords internal
+warn_ambiguous_taxa <- function(taxa, stage_pattern) {
+  # Two source columns landing on one output column would silently overwrite
+  # each other, so this is an error rather than a warning.
+  duplicated_names <- unique(taxa$name[duplicated(taxa$name)])
+  if (length(duplicated_names) > 0) {
+    clashing <- taxa$column[taxa$name %in% duplicated_names]
+    stop("These columns resolve to the same name: ",
+         paste(clashing, collapse = ", "),
+         "
+They would overwrite one another. Rename them in the source file, ",
+         "or pass a `suffix`/`stage_pattern` that tells them apart.",
+         call. = FALSE)
+  }
+
+  # A stage marker somewhere other than the end was not read as the stage, so
+  # the column has been treated as a total. Combination stages are how this
+  # usually happens: CALANUS_FINMARCHICUS_CV_VI is neither CV nor a total.
+  inner <- grepl("_C(?:I{1,3}|IV|VI?)(?:_|$)", taxa$taxon, perl = TRUE)
+  if (any(inner)) {
+    warning("Read as totals, but the name contains a stage marker: ",
+            paste(taxa$column[inner], collapse = ", "),
+            "
+A combination stage such as CV_VI is neither a single stage nor ",
+            "a total. Check what these columns hold before modelling them.",
+            call. = FALSE)
+  }
+
+  # `column_prefix` matches "<prefix>_", so a taxon whose name prefixes another
+  # would collect the other's stage columns as if they were its own.
+  unique_taxa <- unique(taxa$taxon)
+  shadowed <- vapply(unique_taxa, function(one) {
+    any(startsWith(setdiff(unique_taxa, one), paste0(one, "_")))
+  }, logical(1))
+  if (any(shadowed)) {
+    warning("These taxon names are prefixes of others: ",
+            paste(unique_taxa[shadowed], collapse = ", "),
+            "
+A config using column_prefix for one would also match the ",
+            "other's columns. Use abundance_column for them, or rename.",
+            call. = FALSE)
+  }
+
+  invisible(taxa)
 }
 
 #' Build a station database from a raw zooplankton export
@@ -308,4 +367,94 @@ species_catalog_from <- function(header, suffix = "_10M2",
     }
   })
   stats::setNames(entries, names(keys))
+}
+
+#' Species a formatted database could model
+#'
+#' The config's species catalog names the taxa a run was set up for. A formatted
+#' export carries every taxon the survey counted, which is most of a hundred, and
+#' any of them can be modelled. This reads the candidates off the file.
+#'
+#' A taxon with stage columns is reported once, as a prefix, since that is how a
+#' config selects it and how its stages are summed. Everything else is reported
+#' as a total.
+#'
+#' @section What it cannot tell you:
+#' A formatted database has had the units cut off its taxon columns, so nothing
+#' in the name distinguishes a taxon from the in-situ measurements the export
+#' also carries. `STATION_DEPTH` and `BTM_TEMP` are candidates here in exactly
+#' the way `CALANUS_FINMARCHICUS` is. The list is what could be an abundance
+#' column, not what is one. Run [zoop_taxa()] against the raw export for the
+#' answer the raw column names still hold.
+#'
+#' @param zoop_file path to a formatted database, or its column names
+#' @param stage_pattern regular expression matching a life stage
+#' @param exclude columns to leave out. The default drops the in-situ
+#'   measurements the ECOMON export carries, which are numeric columns that are
+#'   not taxa; pass `character()` to see them.
+#' @return a data frame of `species`, `form` (`"total"` or `"stages"`), and
+#'   `stages`, one row per candidate
+#' @examples
+#' available_species(c("station", "year", "month", "day", "lon", "lat",
+#'                     "CALANUS_FINMARCHICUS", "PSEUDOCALANUS_SPP_CIV",
+#'                     "PSEUDOCALANUS_SPP_CV"))
+#' @seealso [zoop_taxa()], [species_catalog_from()]
+#' @export
+available_species <- function(zoop_file,
+                              stage_pattern = "_(C(?:I{1,3}|IV|VI?))$",
+                              exclude = measurement_columns()) {
+  header <- if (length(zoop_file) == 1 && file.exists(zoop_file)) {
+    names(readr::read_csv(zoop_file, n_max = 0, show_col_types = FALSE,
+                           progress = FALSE))
+  } else {
+    zoop_file
+  }
+
+  structural <- c("station", "year", "month", "day", "lon", "lat", "dataset",
+                  "jday", "abundance", "patch", "TIME")
+  candidates <- setdiff(header, c(structural, exclude))
+  if (length(candidates) == 0) {
+    return(data.frame(species = character(), form = character(),
+                      stages = character(), stringsAsFactors = FALSE))
+  }
+
+  staged <- grepl(stage_pattern, candidates)
+  taxon <- ifelse(staged, sub(stage_pattern, "", candidates), candidates)
+  stage <- ifelse(staged, sub(paste0("^.*", stage_pattern), "\\1", candidates), NA)
+
+  out <- do.call(rbind, lapply(unique(taxon), function(one) {
+    stages <- stats::na.omit(stage[taxon == one])
+    data.frame(
+      species = one,
+      form = if (length(stages) > 0) "stages" else "total",
+      stages = paste(stages, collapse = ", "),
+      stringsAsFactors = FALSE
+    )
+  }))
+  out[order(out$species), ]
+}
+
+#' In-situ measurement columns the raw export carries
+#'
+#' A formatted database has had the units cut off its taxon columns, so nothing
+#' in a name distinguishes `CALANUS_FINMARCHICUS` from `BTM_TEMP`. These are the
+#' measurement columns the ECOMON export is known to carry, so that a list of
+#' modellable species is not padded with water temperature.
+#'
+#' A list rather than a rule, because there is no rule: the export names its
+#' measurements no differently from its animals. Anything not here and not
+#' structural is taken to be a taxon.
+#'
+#' `SFC_TMEP` is in the list twice over, spelled as the export spells it and as
+#' it would be spelled correctly, so a file that has since been fixed is still
+#' handled.
+#'
+#' @return character vector of column names
+#' @examples
+#' measurement_columns()
+#' @export
+measurement_columns <- function() {
+  c("CRUISE_NAME", "EVENT_PK_SEQ", "NET_PK_SEQ", "ZOO_GEAR", "TOW_PROTOCOL",
+    "TOW_PROFILE", "SORT_TYPE", "STATION_DEPTH", "SFC_TMEP", "SFC_TEMP",
+    "SFC_SALT", "BTM_TEMP", "BTM_SALT", "BIO_VOLUME_1M2")
 }
