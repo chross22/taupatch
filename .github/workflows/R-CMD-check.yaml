@@ -54,14 +54,6 @@ jobs:
             libproj-dev \
             libudunits2-dev
 
-      # copernicus is not on CRAN, so the Imports-based resolution below will
-      # not find it. datamatch and derivoce come from the Remotes field.
-      - name: Install copernicus from GitHub
-        run: |
-          install.packages("remotes")
-          remotes::install_github("BigelowLab/copernicus")
-        shell: Rscript {0}
-
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::rcmdcheck
