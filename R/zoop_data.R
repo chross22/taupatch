@@ -316,8 +316,30 @@ resolve_threshold <- function(abundance, species) {
   }
 
   if (species$threshold$type == "percentile") {
-    unname(stats::quantile(abundance, probs = species$threshold$value, na.rm = TRUE))
+    return(round_threshold(
+      unname(stats::quantile(abundance, probs = species$threshold$value,
+                             na.rm = TRUE))
+    ))
   } else {
     species$threshold$value
   }
+}
+
+#' Round a computed threshold to the nearest thousand
+#'
+#' A percentile lands on whatever value the data happens to hold there -
+#' 9573.412 animals per square metre - and reporting a patch boundary to three
+#' decimal places claims a precision the survey does not have. The nearest
+#' thousand is a number that can be written in a paper.
+#'
+#' Left alone below 1500, where rounding would move the boundary by more than a
+#' third of its own value, and would take anything under 500 to zero and make
+#' every station a patch.
+#'
+#' @param threshold the computed abundance threshold
+#' @return the threshold, rounded
+#' @keywords internal
+round_threshold <- function(threshold) {
+  if (!is.finite(threshold) || threshold < 1500) return(threshold)
+  round(threshold, -3)
 }

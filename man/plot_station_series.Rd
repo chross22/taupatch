@@ -4,14 +4,10 @@
 \alias{plot_station_series}
 \title{Abundance over the record}
 \usage{
-plot_station_series(dat, by = c("record", "year", "season"), path = NULL)
+plot_station_series(dat, path = NULL)
 }
 \arguments{
 \item{dat}{station data from \code{\link[=load_zoop_data]{load_zoop_data()}}}
-
-\item{by}{\code{"record"} places each station at its own year and month, so the
-seasonal cycle and the interannual swing show together; \code{"year"} and
-\code{"season"} collapse onto one axis or the other}
 
 \item{path}{optional file to write the plot to instead of returning it}
 }
@@ -19,9 +15,9 @@ seasonal cycle and the interannual swing show together; \code{"year"} and
 a \code{ggplot} object, or \code{path} invisibly when writing
 }
 \description{
-One point per station against its date, with the annual median through it.
-Shows the seasonal cycle, the interannual swings, and the gaps in the record
-at once.
+One point per station against its own year and month, with the monthly median
+over the top. The seasonal cycle, the swings between years, and the months
+nobody sampled all read from the same picture.
 }
 \examples{
 \dontrun{

@@ -481,13 +481,24 @@ plot_covariate_map <- function(env_dat, covariate, year, month, path = NULL) {
   # exactly what a patchy projection is asking about.
   missing <- frame[is.na(frame$value), ]
 
+  # The cell size, so the tiles meet rather than leaving gaps or overlapping.
+  # Taken from the data because the grid is whatever the covariates were joined
+  # onto, which a prejoin step can change.
+  spacing <- function(v) {
+    steps <- diff(sort(unique(v)))
+    if (length(steps) == 0) 1 else stats::median(steps)
+  }
+
   p <- ggplot2::ggplot(frame[!is.na(frame$value), ],
                        ggplot2::aes(x = .data$lon, y = .data$lat,
-                                    colour = .data$value)) +
+                                    fill = .data$value)) +
     coastline_layer(frame) +
-    ggplot2::geom_point(size = 1.1, shape = 15) +
-    ggplot2::scale_colour_viridis_c(option = "magma",
-                                    name = axis_label(covariate)) +
+    # Tiles rather than points: this is a field sampled on a regular grid, and
+    # drawing it as dots leaves white between cells that reads as missing data
+    # when it is only the gap between two markers.
+    ggplot2::geom_tile(width = spacing(frame$lon), height = spacing(frame$lat)) +
+    ggplot2::scale_fill_viridis_c(option = "magma",
+                                  name = axis_label(covariate)) +
     # coord_sf(), not coord_quickmap(): geom_sf() refuses to draw under anything
     # else, and refuses at draw time rather than when the plot is built - so the
     # failure survives a ggplot_build() check and surfaces in the app.
@@ -503,9 +514,11 @@ plot_covariate_map <- function(env_dat, covariate, year, month, path = NULL) {
     ggplot2::theme_minimal()
 
   if (nrow(missing) > 0) {
-    p <- p + ggplot2::geom_point(data = missing, inherit.aes = FALSE,
-                                 ggplot2::aes(x = .data$lon, y = .data$lat),
-                                 colour = "grey80", size = 1.1, shape = 15)
+    p <- p + ggplot2::geom_tile(data = missing, inherit.aes = FALSE,
+                                ggplot2::aes(x = .data$lon, y = .data$lat),
+                                fill = "grey85",
+                                width = spacing(frame$lon),
+                                height = spacing(frame$lat))
   }
 
   if (is.null(path)) return(p)

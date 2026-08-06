@@ -198,3 +198,21 @@ test_that("label_patch requires enough rows to fit", {
 
   expect_error(label_patch(data.frame(abundance = 1:50), config), "at least 100")
 })
+
+test_that("a percentile threshold is rounded to something reportable", {
+  # A percentile lands wherever the data happens to sit - 9573.412 - and a patch
+  # boundary quoted to three decimals claims a precision the survey lacks.
+  expect_equal(round_threshold(9573.412), 10000)
+  expect_equal(round_threshold(46160), 46000)
+  expect_equal(round_threshold(1600), 2000)
+
+  # Left alone where rounding would move the boundary by a third of itself, and
+  # would take anything under 500 to zero - which makes every station a patch.
+  expect_equal(round_threshold(1400), 1400)
+  expect_equal(round_threshold(120), 120)
+  expect_equal(round_threshold(0.4), 0.4)
+
+  # An absolute threshold is a number someone chose, so it is used as given.
+  species <- list(name = "x", threshold = list(type = "absolute", value = 1234))
+  expect_equal(resolve_threshold(c(1, 2, 3000), species), 1234)
+})

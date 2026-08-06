@@ -53,7 +53,16 @@ projection_map <- function(geotiff, opacity = 0.8) {
     leaflet::addProviderTiles("CartoDB.Positron") |>
     leaflet::addRasterImage(rast, colors = palette, opacity = opacity) |>
     leaflet::fitBounds(extent[1], extent[3], extent[2], extent[4]) |>
-    leaflet::addLegend(pal = palette, values = c(0, 1), title = "P(patch)")
+    # leaflet stacks a continuous legend with the largest value at the bottom,
+    # which reads backwards against the colour ramp beside it and against every
+    # other scale in the package. Reversing the labels puts 0 at the bottom and
+    # 1 at the top without touching the colours.
+    leaflet::addLegend(
+      pal = palette, values = c(0, 1), title = "P(patch)",
+      labFormat = leaflet::labelFormat(
+        transform = function(x) sort(x, decreasing = TRUE)
+      )
+    )
 }
 
 #' Plot a month-by-year heatmap of a covariate
@@ -538,14 +547,12 @@ plot_station_map <- function(dat, transform = c("log1p", "none"), path = NULL) {
 
 #' Abundance over the record
 #'
-#' One point per station against its date, with the annual median through it.
-#' Shows the seasonal cycle, the interannual swings, and the gaps in the record
-#' at once.
+#' One point per station against its own year and month, with the monthly median
+#' over the top. The seasonal cycle, the swings between years, and the months
+#' nobody sampled all read from the same picture.
 #'
 #' @param dat station data from [load_zoop_data()]
-#' @param by `"record"` places each station at its own year and month, so the
-#'   seasonal cycle and the interannual swing show together; `"year"` and
-#'   `"season"` collapse onto one axis or the other
+
 #' @param path optional file to write the plot to instead of returning it
 #' @return a `ggplot` object, or `path` invisibly when writing
 #' @examples
@@ -553,39 +560,30 @@ plot_station_map <- function(dat, transform = c("log1p", "none"), path = NULL) {
 #' plot_station_series(load_zoop_data(config))
 #' }
 #' @export
-plot_station_series <- function(dat, by = c("record", "year", "season"),
-                                path = NULL) {
-  by <- match.arg(by)
+plot_station_series <- function(dat, path = NULL) {
   dat <- dat[!is.na(dat$abundance), ]
   if (nrow(dat) == 0) stop("No abundances to plot.", call. = FALSE)
 
-  # "record" places each station at its own month rather than collapsing the
-  # year onto one point, so the seasonal cycle and the interannual swing are
-  # visible at once instead of one at a time.
-  dat$x <- switch(by,
-                  record = dat$year + (dat$month - 0.5) / 12,
-                  year = dat$year,
-                  season = dat$month)
-  summary <- stats::aggregate(dat$abundance, by = list(x = dat$x), FUN = stats::median,
-                              na.rm = TRUE)
-  names(summary)[2] <- "median"
+  # Each station at its own month on a continuous axis, so the seasonal cycle
+  # and the drift between years are one picture rather than two.
+  dat$x <- dat$year + (dat$month - 0.5) / 12
+  monthly <- stats::aggregate(dat$abundance, by = list(x = dat$x),
+                              FUN = stats::median, na.rm = TRUE)
+  names(monthly)[2] <- "median"
 
   p <- ggplot2::ggplot(dat, ggplot2::aes(x = .data$x, y = .data$abundance)) +
-    ggplot2::geom_jitter(width = 0.2, alpha = 0.25, size = 1, colour = "#2c7fb8") +
-    ggplot2::geom_line(data = summary, ggplot2::aes(y = .data$median),
-                       linewidth = 0.7, colour = "#08306b") +
-    ggplot2::geom_point(data = summary, ggplot2::aes(y = .data$median),
-                        size = 1.8, colour = "#08306b") +
+    ggplot2::geom_jitter(width = 0.02, alpha = 0.25, size = 1,
+                         colour = "#2c7fb8") +
+    # The monthly median as points, not a line. A survey does not sample every
+    # month, and a line drawn across a gap asserts a trajectory through months
+    # nobody went to sea in.
+    ggplot2::geom_point(data = monthly, ggplot2::aes(y = .data$median),
+                        size = 1.9, colour = "#08306b") +
     # Abundance is heavily right-skewed, so a linear axis is one cloud at the
     # bottom and a handful of points far above it.
     ggplot2::scale_y_continuous(trans = "log1p") +
-    ggplot2::labs(x = switch(by, season = "Month", NULL),
-                  y = "Abundance (log scale)") +
+    ggplot2::labs(x = NULL, y = "Abundance (log scale)") +
     ggplot2::theme_minimal()
-
-  if (by == "season") {
-    p <- p + ggplot2::scale_x_continuous(breaks = 1:12, labels = month.abb)
-  }
 
   if (is.null(path)) return(p)
   ggplot2::ggsave(path, plot = p, width = 8, height = 4, dpi = 150)

@@ -244,3 +244,25 @@ test_that("maps draw, not just build", {
   expect_true(drawn(plot_covariate_map(env, "SST", 2018, 6)))
   expect_true(drawn(plot_station_series(dat)))
 })
+
+test_that("abundance over the record is one continuous series", {
+  skip_on_cran()
+  config <- mock_config()
+  generate_mock_zoop_data(config)
+  dat <- load_zoop_data(config)
+
+  p <- plot_station_series(dat)
+  built <- ggplot2::ggplot_build(p)
+
+  # A station sits at its own year and month rather than being collapsed onto
+  # one or the other, so the axis is continuous and spans the record.
+  x <- built$data[[1]]$x
+  expect_gt(diff(range(x)), 0.5)
+  expect_true(all(x >= min(dat$year) & x <= max(dat$year) + 1))
+
+  # Points only. A line joining sampled months draws a trajectory through the
+  # ones nobody sailed in.
+  geoms <- vapply(p$layers, function(l) class(l$geom)[1], character(1))
+  expect_false("GeomLine" %in% geoms)
+  expect_true(all(geoms %in% c("GeomPoint", "GeomJitter")))
+})

@@ -384,11 +384,8 @@ tabPanel("Config", br(), verbatimTextOutput("config_yaml")),
                  ),
                  br(),
                  h4("Abundance over the record"),
-                 radioButtons("zoop_series_by", NULL, inline = TRUE,
-                              choices = c("Year and month" = "record",
-                                          "By year" = "year",
-                                          "By month" = "season"),
-                              selected = "record"),
+                 helpText("Every station at its own month, so the seasonal cycle",
+                          "and the drift between years read together."),
                  plotOutput("zoop_series", height = "320px"),
                  br(),
                  h4("Distribution"),
@@ -1060,9 +1057,7 @@ server <- function(input, output, session) {
 
   output$zoop_map <- renderPlot(plot_station_map(loaded_zoop()))
 
-  output$zoop_series <- renderPlot({
-    plot_station_series(loaded_zoop(), by = input$zoop_series_by %||% "record")
-  })
+  output$zoop_series <- renderPlot(plot_station_series(loaded_zoop()))
 
   output$zoop_distribution <- renderPlot({
     dat <- loaded_zoop()
@@ -1545,7 +1540,11 @@ server <- function(input, output, session) {
     means <- run_result()$covariate_means
     subset <- means[means$covariate == input$heatmap_covariate, ]
     years <- sort(unique(subset$year))
-    months <- rev(month.abb)
+
+    # Only the months present are drawn. A discrete scale positions the levels
+    # it uses at 1..n and skips the rest, so indexing into all twelve put the
+    # hover three rows out on a summer-only record and read December for August.
+    months <- rev(month.abb)[rev(month.abb) %in% month.abb[unique(subset$month)]]
 
     # Discrete axes are drawn at 1..n, so the nearest integer is the cell.
     xi <- round(hover$x)
