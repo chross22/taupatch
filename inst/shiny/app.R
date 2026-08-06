@@ -28,6 +28,25 @@ bathymetry_choices <- covariate_labels(
   covariate_reference[covariate_reference$name %in% bathymetry_names, ]
 )
 
+# "log1p - log(1 + |x|)" in the dropdown, "log1p" as the value.
+transform_catalog <- covariate_transforms()
+transform_choices <- stats::setNames(
+  names(transform_catalog),
+  paste0(names(transform_catalog), " - ",
+         vapply(transform_catalog, function(e) e$label, character(1)))
+)
+
+# The config allows a different transform per covariate; the sidebar offers one
+# transform applied to a set, which is what a run wants nearly always. A config
+# using several is read back as its largest group, and editing the YAML is the
+# way to keep more than one.
+app_transform <- function(config) {
+  spec <- taupatch:::covariate_transform_spec(config)
+  if (length(spec) == 0) return(list(type = "log1p", vars = character(0)))
+  largest <- names(spec)[which.max(lengths(spec))]
+  list(type = largest, vars = spec[[largest]])
+}
+
 ui <- fluidPage(
   tags$head(tags$style(HTML("
     .tp-header { display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
@@ -163,28 +182,38 @@ ui <- fluidPage(
                   selected = base_config$covariates$bathymetry %||% character(0)),
       # Choices are narrowed to what is actually selected above, by the observer
       # in the server. Offering unselected covariates here would let a config
-      # name a log-transform for something the run never fetches, which config
+      # name a transform for something the run never fetches, which config
       # validation rejects.
-      selectInput("log_transform", "Log-transform", multiple = TRUE,
+      selectInput("transform_vars", "Transform", multiple = TRUE,
                   choices = character(0),
-                  selected = base_config$covariates$log_transform %||% character(0)),
+                  selected = app_transform(base_config)$vars),
+      conditionalPanel(
+        "input.transform_vars && input.transform_vars.length > 0",
+        selectInput("transform_type", NULL, choices = transform_choices,
+                    selected = app_transform(base_config)$type)
+      ),
+      checkboxInput("normalize", "Centre and scale predictors",
+                    value = !isFALSE(base_config$covariates$normalize)),
       helpText("Seafloor covariates are downloaded once from NOAA ETOPO and do",
                "not vary in time. Day of year is always included, and is what",
-               "makes one model produce month-specific maps. See the Covariates",
-               "tab for units and definitions."),
+               "makes one model produce month-specific maps."),
+      actionLink("show_dictionary", "Covariate dictionary →"),
+      helpText("Units, resolutions, and definitions for every covariate."),
 
       hr(),
-      actionButton("run", "Run model", class = "btn-primary", width = "100%")
+      actionButton("run", "Run model", class = "btn-primary", width = "100%"),
+      br(), br(),
+      downloadButton("download_config", "Download config (.yaml)",
+                     style = "width: 100%;"),
+      helpText("Saves the settings above as a config file, so a run you arrived",
+               "at by clicking can be repeated with run_taupatch().")
     ),
 
     mainPanel(
       width = 9,
       tabsetPanel(
+        id = "main_tabs",
         tabPanel("Config", br(), verbatimTextOutput("config_yaml")),
-        tabPanel("Covariates", br(),
-                 p("Click a covariate for its full definition, units, and the",
-                   "Copernicus variable and dataset it comes from."),
-                 uiOutput("covariate_reference")),
         tabPanel("Results", br(),
                  h4("Cross-validated performance"),
                  helpText("Threshold-dependent metrics are shown at both the",
@@ -211,12 +240,29 @@ ui <- fluidPage(
                  uiOutput("map_controls"),
                  leaflet::leafletOutput("map", height = "600px")),
         tabPanel("Covariate trends", br(),
-                 p("Study-area mean of each covariate by month and year.",
-                   "The seasonal cycle reads down a column, interannual change",
-                   "across a row, and gaps in the record show up as blank cells."),
+                 p("Study-area mean of each covariate over the run's period."),
                  uiOutput("heatmap_controls"),
-                 plotOutput("covariate_heatmap", height = "480px")),
-        tabPanel("Log", br(), verbatimTextOutput("log"))
+                 plotOutput("covariate_heatmap", height = "480px"),
+                 br(),
+                 h4("Seasonal cycle"),
+                 helpText("Each year drawn as its own line, so a year that",
+                          "departs from the usual cycle stands out and a gap in",
+                          "the record reads as a missing line rather than as a",
+                          "value."),
+                 plotOutput("covariate_seasonal", height = "360px"),
+                 br(),
+                 h4("Year to year"),
+                 helpText("Annual mean across the selected months, which is the",
+                          "view that shows drift over the record."),
+                 plotOutput("covariate_annual", height = "300px")),
+        tabPanel("Log", br(), verbatimTextOutput("log")),
+        # Last, and reached from the sidebar link, because it is reference
+        # material consulted while choosing covariates rather than a step in
+        # the run.
+        tabPanel("Covariate dictionary", br(),
+                 p("Every covariate the pipeline can use. Click one for its full",
+                   "definition and the dataset it comes from."),
+                 uiOutput("covariate_reference"))
       )
     )
   )
@@ -345,7 +391,26 @@ server <- function(input, output, session) {
     config$model$cv_folds <- input$cv_folds
     config$covariates$selected <- input$covariates
     config$covariates$bathymetry <- input$bathymetry %||% character()
-    config$covariates$log_transform <- input$log_transform %||% character()
+
+    # The sidebar owns the transform block outright, so a stale log_transform
+    # from the config the app opened on cannot survive alongside it and be
+    # merged back in by covariate_transform_spec().
+    config$covariates$log_transform <- character()
+
+    # Narrowed to what is actually selected. An observer keeps the control's
+    # choices in step, but that is a round-trip to the browser and back: between
+    # deselecting a covariate and the client echoing the correction, the
+    # transform still names it, and a run started in that window dies in config
+    # validation rather than doing anything. Intersecting here means the config
+    # is never in that state to begin with.
+    transform_vars <- intersect(input$transform_vars,
+                                 c(input$covariates, input$bathymetry))
+    config$covariates$transform <- if (length(transform_vars) > 0) {
+      stats::setNames(list(transform_vars), input$transform_type)
+    } else {
+      list()
+    }
+    config$covariates$normalize <- isTRUE(input$normalize)
     config
   })
 
@@ -355,6 +420,18 @@ server <- function(input, output, session) {
     yaml::as.yaml(config[c("paths", "columns", "species", "dates",
                             "study_area", "covariates", "model", "projection")])
   })
+
+  output$download_config <- downloadHandler(
+    filename = function() {
+      paste0(current_config()$species$active, "_",
+             format(Sys.Date(), "%Y%m%d"), ".yaml")
+    },
+    content = function(file) save_config(current_config(), file)
+  )
+
+  observeEvent(input$show_dictionary, {
+    updateTabsetPanel(session, "main_tabs", selected = "Covariate dictionary")
+  }, ignoreInit = TRUE)
 
   observeEvent(input$run, {
     config <- current_config()
@@ -401,16 +478,24 @@ server <- function(input, output, session) {
         column(2, actionLink(paste0("covar_info_", i), strong(info$name[i]))),
         column(4, info$label[i]),
         column(2, tags$code(info$units[i])),
-        column(4, tags$small(tags$code(info$variable[i])))
+        column(2, tags$small(info$spatial[i])),
+        column(2, tags$small(info$temporal[i]))
       )
     })
     tagList(
       fluidRow(
         style = "padding-bottom: 6px; border-bottom: 2px solid #ccc; font-weight: bold;",
         column(2, "Name"), column(4, "Long name"),
-        column(2, "Units"), column(4, "Copernicus variable")
+        column(2, "Units"), column(2, "Grid"), column(2, "Time step")
       ),
-      rows
+      rows,
+      br(),
+      helpText("Grid spacing is the source product's own. Selecting covariates",
+               "from products of different resolution means one grid has to be",
+               "reconciled onto the other, and which is finer is not always the",
+               "obvious one: satellite chlorophyll at 4 km is finer than the",
+               "0.083 degree physics, while the model chlorophyll at 0.25",
+               "degrees is far coarser than both.")
     )
   })
 
@@ -423,6 +508,8 @@ server <- function(input, output, session) {
           p(info$description[i]),
           tags$dl(
             tags$dt("Units"), tags$dd(tags$code(info$units[i])),
+            tags$dt("Spatial resolution"), tags$dd(info$spatial[i]),
+            tags$dt("Temporal resolution"), tags$dd(info$temporal[i]),
             tags$dt("Copernicus variable"), tags$dd(tags$code(info$variable[i])),
             tags$dt("Dataset"), tags$dd(tags$code(info$dataset[i]))
           ),
@@ -515,17 +602,17 @@ server <- function(input, output, session) {
     contentType = "application/zip"
   )
 
-  # Keep the log-transform choices in step with what is actually selected above.
+  # Keep the transform choices in step with what is actually selected above.
   # updateSelectInput rather than re-rendering the control, so an existing
   # selection survives; a selection that is no longer available is dropped, since
-  # config validation rejects a log-transform naming an unfetched covariate.
+  # config validation rejects a transform naming an unfetched covariate.
   observe({
     available <- c(input$covariates, input$bathymetry)
     labels <- c(covariate_choices, bathymetry_choices)
     choices <- labels[labels %in% available]
 
-    updateSelectInput(session, "log_transform", choices = choices,
-                      selected = intersect(isolate(input$log_transform), available))
+    updateSelectInput(session, "transform_vars", choices = choices,
+                      selected = intersect(isolate(input$transform_vars), available))
   })
 
   # Names what is currently selected, so the chosen predictor set is legible
@@ -579,6 +666,16 @@ server <- function(input, output, session) {
   output$covariate_heatmap <- renderPlot({
     req(run_result(), input$heatmap_covariate)
     plot_covariate_heatmap(run_result()$covariate_means, input$heatmap_covariate)
+  })
+
+  output$covariate_seasonal <- renderPlot({
+    req(run_result(), input$heatmap_covariate)
+    plot_covariate_seasonal(run_result()$covariate_means, input$heatmap_covariate)
+  })
+
+  output$covariate_annual <- renderPlot({
+    req(run_result(), input$heatmap_covariate)
+    plot_covariate_annual(run_result()$covariate_means, input$heatmap_covariate)
   })
 
   output$map <- leaflet::renderLeaflet({

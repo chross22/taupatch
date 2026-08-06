@@ -12,7 +12,7 @@ rather than fetched}
 }
 \value{
 a data frame with \code{name}, \code{label}, \code{units}, \code{variable}, \code{dataset},
-and \code{description} columns
+\code{spatial}, \code{temporal}, and \code{description} columns
 }
 \description{
 The catalog as a data frame, for display in documentation or the app's
@@ -20,4 +20,5 @@ covariate reference tab.
 }
 \examples{
 covariate_info()[, c("name", "label", "units")]
+covariate_info()[, c("name", "spatial", "temporal")]
 }

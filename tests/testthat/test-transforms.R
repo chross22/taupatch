@@ -178,3 +178,37 @@ test_that("generate_config carries derivoce steps through", {
   expect_equal(derivoce_names(config), "SST_grad")
   expect_null(yaml::read_yaml(path)$covariates$bathymetry)
 })
+
+test_that("save_config round-trips a config and drops the derived species entry", {
+  config <- mock_config()
+  config$covariates$selected <- c("SST", "SSS")
+  config$covariates$transform <- list(fourth_root = "SST")
+  config$covariates$normalize <- FALSE
+
+  path <- file.path(tempfile("cfg"), "run.yaml")
+  dir.create(dirname(path))
+  save_config(config, path)
+
+  # species$resolved is derived by load_config(); writing it back would put a
+  # computed field in a file meant to be edited by hand.
+  expect_null(yaml::read_yaml(path)$species$resolved)
+
+  back <- load_config(path)
+  expect_equal(covariate_transform_spec(back), list(fourth_root = "SST"))
+  expect_false(back$covariates$normalize)
+  expect_equal(back$covariates$selected, c("SST", "SSS"))
+})
+
+test_that("save_config and generate_config produce the same shape of file", {
+  dir <- tempfile("cfg"); dir.create(dir)
+  generated <- generate_config("gen", dir = dir, zoop_file = "data/absent.csv")
+
+  saved <- file.path(dir, "saved.yaml")
+  save_config(load_config(generated), saved)
+
+  expect_match(readLines(saved)[1], "^# taupatch run config: saved")
+  # Block order is the order the documentation reads them in, not the order a
+  # session's edits happened to leave the list in.
+  blocks <- function(path) grep("^[a-z_]+:", readLines(path), value = TRUE)
+  expect_equal(blocks(saved), blocks(generated))
+})

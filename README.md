@@ -99,6 +99,126 @@ that call rather than five minutes into a run.
 
 ## Configuration
 
+A config is one YAML file describing one run. Everything below is in it —
+species, thresholds, dates, study area, covariates, model — so two runs differ by
+a file rather than by edited code.
+
+### A complete config, walked through
+
+There are eight top-level blocks. This is all of them, with every field a normal
+run sets:
+
+```yaml
+# 1. Where things live. Every relative path is resolved against project_dir,
+#    and project_dir itself against this file's own location - so a config with
+#    '.' works no matter what your R working directory is.
+paths:
+  project_dir: '.'
+  zoop_file: data/zooplankton_database.csv   # the station database
+  output_dir: output/cfin_gom                # created if absent
+
+# 2. What the station columns are called in YOUR database. These are the
+#    defaults, so this block can be omitted entirely if your columns match.
+columns:
+  lat: lat
+  lon: lon
+  year: year
+  month: month
+  day: day
+
+# 3. Which species, and what counts as a patch. `active` picks one from the
+#    catalog; the others stay defined so switching species is a one-word edit.
+species:
+  active: cfin
+  catalog:
+    cfin:
+      column_prefix: cfin        # defaults to the key, so this is optional
+      threshold:
+        type: percentile         # or: absolute
+        value: 0.9               # top 10% of stations are patches
+    ctyp:
+      column_prefix: ctyp
+      threshold: {type: percentile, value: 0.9}
+
+# 4. Which observations the model is fitted on.
+dates:
+  years: [2003, 2017]
+  months: [1, 12]
+
+# 5. Where. Covariates are downloaded for this box, and stations outside it are
+#    dropped. Draw it wider than your stations if you use gradients or fronts -
+#    those are undefined on the edge.
+study_area:
+  bbox: {xmin: -76.0, xmax: -65.0, ymin: 35.0, ymax: 45.0}
+
+# 6. What the model predicts from. See the sections below for each sub-block.
+covariates:
+  source: copernicus              # or: local_netcdf, mock
+  selected: [SST, SSS, BOTT, MLD, CHL]   # time-varying, from Copernicus
+  bathymetry: [DEPTH, SLOPE]             # static, from NOAA ETOPO
+  derived: [jday]                        # day of year; the seasonality term
+  derivoce:                              # computed from the grid, optional
+    - type: horizontal_gradient
+      vars: [SST]
+  transform:                             # optional; one transform per covariate
+    log1p: [CHL, DEPTH]
+  normalize: true
+
+# 7. How it is fitted.
+model:
+  engine: ranger
+  trees: 500
+  cv_folds: 10
+  tune: false
+  seed: 42
+
+# 8. What gets mapped. Omit years/months to reuse the training window.
+projection:
+  years: [2003, 2017]
+  months: [1, 12]
+  write_geotiff: true
+  write_png: true
+  overwrite: true
+```
+
+Only `paths`, `species`, `dates`, `study_area`, and `covariates` have no usable
+defaults — the rest can be left out entirely.
+
+### Three ways to get one
+
+**Generate it**, which is the shortest path and validates as it writes:
+
+```r
+generate_config("cfin_gom", zoop_file = "data/zooplankton_database.csv",
+                selected = c("SST", "SSS", "CHL"), bathymetry = "DEPTH",
+                transform = list(log1p = c("CHL", "DEPTH")))
+```
+
+**Copy the worked example**, `inst/configs/cfin_gom.yaml`, which is the same
+thing with every field explained inline:
+
+```r
+file.copy(system.file("configs", "cfin_gom.yaml", package = "taupatch"),
+          "my_run.yaml")
+```
+
+**Build it in the app** and download the config it produces, which is the way to
+keep a run you arrived at by clicking.
+
+Either way, check it before running. `load_config()` applies the defaults and
+validates everything cheap to validate — that the species resolves, the
+thresholds are well-formed, the covariate names exist, the transforms name
+covariates the run actually fetches, and the declared columns are present in your
+CSV:
+
+```r
+config <- load_config("my_run.yaml")
+config$covariates$selected
+```
+
+An error here costs a second. The same mistake found during a run costs however
+long the Copernicus download took to get there.
+
 ### Species and life stages
 
 Each species names the prefix of its columns in the database. `column_prefix`

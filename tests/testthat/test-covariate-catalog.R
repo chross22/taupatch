@@ -184,3 +184,39 @@ test_that("choosing the coarsest grid replicates nothing", {
 
   expect_equal(nrow(joined), nrow(sources$coarse))
 })
+
+test_that("resolutions are read off the Copernicus dataset id", {
+  # The id encodes both, so they are derived rather than maintained as a second
+  # list that could drift from it.
+  physics <- dataset_resolution("cmems_mod_glo_phy_my_0.083deg_P1M-m")
+  expect_equal(physics$spatial, "0.083° (~9 km)")
+  expect_equal(physics$temporal, "monthly")
+
+  bgc <- dataset_resolution("cmems_mod_glo_bgc_my_0.25deg_P1M-m")
+  expect_equal(bgc$spatial, "0.25° (~28 km)")
+
+  # Satellite products state kilometres rather than degrees. Both forms have to
+  # parse, because which of two products is finer decides which grid a run
+  # lands on - and 4 km ocean-colour chlorophyll is finer than the 0.083 degree
+  # physics it joins to, which reading only degrees would get backwards.
+  satellite <- dataset_resolution("cmems_obs-oc_glo_bgc-plankton_my_l4-multi-4km_P1M")
+  expect_equal(satellite$spatial, "4 km (~0.036°)")
+  expect_equal(satellite$temporal, "monthly")
+
+  expect_equal(dataset_resolution("something_P1D-m")$temporal, "daily")
+  expect_equal(dataset_resolution("no_resolution_here")$spatial, "unknown")
+  expect_equal(dataset_resolution("no_resolution_here")$temporal, "unknown")
+})
+
+test_that("the reference table carries a resolution for every covariate", {
+  info <- covariate_info(include_derived = TRUE)
+
+  expect_true(all(c("spatial", "temporal") %in% names(info)))
+  expect_false(any(is.na(info$spatial) | !nzchar(info$spatial)))
+  expect_false(any(is.na(info$temporal) | !nzchar(info$temporal)))
+
+  # The two grids the pipeline actually has to reconcile.
+  expect_equal(info$spatial[info$name == "SST"], "0.083° (~9 km)")
+  expect_equal(info$spatial[info$name == "CHL"], "4 km (~0.036°)")
+  expect_equal(info$temporal[info$name == "DEPTH"], "static")
+})

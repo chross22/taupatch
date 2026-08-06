@@ -75,12 +75,8 @@ projection_map <- function(geotiff, opacity = 0.8) {
 #' }
 #' @export
 plot_covariate_heatmap <- function(means, covariate = NULL, path = NULL) {
-  covariate <- covariate %||% means$covariate[1]
-  subset <- means[means$covariate == covariate, ]
-  if (nrow(subset) == 0) {
-    stop("No values for covariate '", covariate, "'. Available: ",
-         paste(unique(means$covariate), collapse = ", "), call. = FALSE)
-  }
+  subset <- covariate_subset(means, covariate)
+  covariate <- subset$covariate[1]
 
   # Months as a reversed factor so January sits at the top, reading like a calendar.
   subset$month_label <- factor(month.abb[subset$month], levels = rev(month.abb))
@@ -101,6 +97,109 @@ plot_covariate_heatmap <- function(means, covariate = NULL, path = NULL) {
   if (is.null(path)) return(p)
   ggplot2::ggsave(path, plot = p, width = 8, height = 5, dpi = 150)
   invisible(path)
+}
+
+#' Plot a covariate's seasonal cycle, one line per year
+#'
+#' The same values the heatmap shows, read the other way: a heatmap is good at
+#' where the record has gaps and poor at how large a departure is, because the
+#' eye cannot compare two colours as precisely as two heights. A year running
+#' warm shows here as a line sitting above the others.
+#'
+#' @param means a data frame from [covariate_monthly_means()]
+#' @param covariate which covariate to plot; defaults to the first
+#' @param path optional file to write the plot to instead of returning it
+#' @return a `ggplot` object, or `path` invisibly when writing
+#' @examples
+#' \dontrun{
+#' plot_covariate_seasonal(result$covariate_means, "SST")
+#' }
+#' @export
+plot_covariate_seasonal <- function(means, covariate = NULL, path = NULL) {
+  subset <- covariate_subset(means, covariate)
+  covariate <- subset$covariate[1]
+  subset$year <- factor(subset$year)
+
+  p <- ggplot2::ggplot(subset, ggplot2::aes(x = .data$month, y = .data$mean,
+                                             colour = .data$year,
+                                             group = .data$year)) +
+    ggplot2::geom_line(linewidth = 0.6) +
+    ggplot2::geom_point(size = 1.2) +
+    ggplot2::scale_x_continuous(breaks = sort(unique(subset$month)),
+                                labels = month.abb[sort(unique(subset$month))]) +
+    ggplot2::scale_colour_viridis_d(option = "viridis", name = NULL) +
+    ggplot2::labs(title = covariate_label(covariate), x = NULL,
+                  y = axis_label(covariate)) +
+    ggplot2::theme_minimal()
+
+  if (is.null(path)) return(p)
+  ggplot2::ggsave(path, plot = p, width = 8, height = 4.5, dpi = 150)
+  invisible(path)
+}
+
+#' Plot a covariate's annual mean over the record
+#'
+#' Collapses each year's months to one value, which is the view that shows drift
+#' across the record rather than the seasonal cycle riding on top of it.
+#'
+#' The mean is taken over whichever months the run fetched. That makes the series
+#' comparable between years only when every year covers the same months — which
+#' is the normal case here, since covariates are fetched for a fixed month range,
+#' but is worth knowing before reading a trend into it.
+#'
+#' @param means a data frame from [covariate_monthly_means()]
+#' @param covariate which covariate to plot; defaults to the first
+#' @param path optional file to write the plot to instead of returning it
+#' @return a `ggplot` object, or `path` invisibly when writing
+#' @examples
+#' \dontrun{
+#' plot_covariate_annual(result$covariate_means, "SST")
+#' }
+#' @export
+plot_covariate_annual <- function(means, covariate = NULL, path = NULL) {
+  subset <- covariate_subset(means, covariate)
+  covariate <- subset$covariate[1]
+
+  annual <- stats::aggregate(subset$mean, by = list(year = subset$year),
+                              FUN = mean, na.rm = TRUE)
+  names(annual)[2] <- "mean"
+
+  p <- ggplot2::ggplot(annual, ggplot2::aes(x = .data$year, y = .data$mean)) +
+    ggplot2::geom_line(linewidth = 0.6, colour = "#2c7fb8") +
+    ggplot2::geom_point(size = 1.6, colour = "#2c7fb8") +
+    ggplot2::labs(title = covariate_label(covariate), x = NULL,
+                  y = axis_label(covariate)) +
+    ggplot2::theme_minimal()
+
+  if (is.null(path)) return(p)
+  ggplot2::ggsave(path, plot = p, width = 8, height = 3.5, dpi = 150)
+  invisible(path)
+}
+
+#' One covariate's rows from a monthly-means table
+#'
+#' @param means a data frame from [covariate_monthly_means()]
+#' @param covariate a covariate name, or `NULL` for the first
+#' @return the matching rows; errors listing what is available if there are none
+#' @keywords internal
+covariate_subset <- function(means, covariate = NULL) {
+  covariate <- covariate %||% means$covariate[1]
+  subset <- means[means$covariate == covariate, ]
+  if (nrow(subset) == 0) {
+    stop("No values for covariate '", covariate, "'. Available: ",
+         paste(unique(means$covariate), collapse = ", "), call. = FALSE)
+  }
+  subset
+}
+
+#' Axis label for a covariate, with units where the catalog has them
+#'
+#' @param covariate a covariate name
+#' @return a label string
+#' @keywords internal
+axis_label <- function(covariate) {
+  units <- covariate_units(covariate)
+  if (nzchar(units)) paste0(covariate, " (", units, ")") else covariate
 }
 
 #' Units for a covariate name

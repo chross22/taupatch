@@ -449,7 +449,7 @@ generate_config <- function(name,
 
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
   out_path <- file.path(dir, paste0(name, ".yaml"))
-  writeLines(c(config_header(name), write_config_yaml(config)), out_path)
+  save_config(config, out_path)
 
   # A config that does not load is worse than none: it sits on disk looking
   # usable. Removed before the error surfaces, so a failed call leaves nothing.
@@ -478,6 +478,45 @@ write_config_yaml <- function(config) {
       out
     }
   ))
+}
+
+#' Write a config list to a YAML file
+#'
+#' The counterpart to [load_config()], and what both [generate_config()] and the
+#' app's download button use, so a config saved from a session and one written
+#' programmatically are the same file.
+#'
+#' `species$resolved` is dropped. `load_config()` derives it on the way in, and
+#' writing it back would put a computed field in a file meant to be edited by
+#' hand — and one that silently overrides the catalog it was derived from.
+#'
+#' @param config a config list
+#' @param path where to write it
+#' @param header whether to lead the file with orientation comments
+#' @return `path`, invisibly
+#' @examples
+#' \dontrun{
+#' config <- load_config("my_run.yaml")
+#' config$model$trees <- 1000
+#' save_config(config, "my_run_1000.yaml")
+#' }
+#' @export
+save_config <- function(config, path, header = TRUE) {
+  config$species$resolved <- NULL
+
+  # Written in the order the documentation reads them, rather than whatever
+  # order the list happens to be in after a session's worth of edits.
+  blocks <- c("paths", "columns", "species", "dates", "study_area", "covariates",
+              "model", "projection")
+  config <- config[c(intersect(blocks, names(config)),
+                     setdiff(names(config), blocks))]
+
+  text <- write_config_yaml(config)
+  if (isTRUE(header)) {
+    text <- c(config_header(sub("\\.ya?ml$", "", basename(path))), text)
+  }
+  writeLines(text, path)
+  invisible(path)
 }
 
 #' Header comments for a generated config

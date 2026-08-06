@@ -100,10 +100,11 @@ covariates:
   #
   # Note two things before adding these. Lags and integrals are undefined for
   # the first month of the record, so those stations drop out. And a gradient
-  # of a variable upsampled from a coarser product (CHL here, on the 0.25
-  # degree biogeochemistry grid) describes the source grid rather than the
-  # ocean - which is why SST, on the native 0.083 degree physics grid, is what
-  # the gradient and front steps below read.
+  # of a variable that was upsampled from a coarser product describes the
+  # source grid rather than the ocean, so check which product is actually
+  # coarser before taking a gradient of it - taupatch::covariate_info() gives
+  # each one's grid, and a run warns when a gradient reads an upsampled
+  # variable.
   derivoce:
     - type: horizontal_gradient
       vars: [SST]            # SST_grad, degrees C per km
