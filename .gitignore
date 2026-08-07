@@ -9,3 +9,11 @@
 data/
 output/
 
+# Build artifacts. Vignettes are rendered by R CMD build from the .Rmd, so the
+# rendered copies are not the source of anything.
+*.Rcheck/
+*.tar.gz
+inst/doc/
+vignettes/*.html
+vignettes/*.R
+

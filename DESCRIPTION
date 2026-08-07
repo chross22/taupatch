@@ -38,11 +38,13 @@ Imports:
 Suggests:
     derivoce,
     fancygam,
+    knitr,
     leaflet,
     ranger,
     xgboost,
     mgcv,
     marmap,
+    rmarkdown,
     shiny,
     shinyFiles,
     rnaturalearth,
@@ -52,6 +54,7 @@ Remotes:
     chross22/derivoce,
     chross22/fancygam
 Config/testthat/edition: 3
+VignetteBuilder: knitr
 URL: https://github.com/chross22/taupatch
 BugReports: https://github.com/chross22/taupatch/issues
 Config/roxygen2/version: 8.1.0

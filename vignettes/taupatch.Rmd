@@ -1,0 +1,301 @@
+---
+title: "Getting started with taupatch"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with taupatch}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  fig.align = "center",
+  dpi = 120
+)
+
+# Everything below runs on synthetic data, so it needs no network and no
+# Copernicus credentials. It does need the default model engine, which is a
+# Suggests rather than a hard dependency.
+runnable <- requireNamespace("ranger", quietly = TRUE) &&
+  requireNamespace("datamatch", quietly = TRUE) &&
+  requireNamespace("ggplot2", quietly = TRUE)
+knitr::opts_chunk$set(eval = runnable)
+```
+
+```{r not-runnable, eval = !runnable, echo = FALSE, results = "asis"}
+cat("> **The code below is not evaluated in this build.** It needs `ranger`",
+    "and `datamatch`, which are suggested rather than required. Install them",
+    "and the vignette runs end to end in a couple of seconds.\n")
+```
+
+```{r library}
+library(taupatch)
+```
+
+## What a run does
+
+taupatch answers one question, monthly, over an area: **where are the patches?**
+A patch is a station whose abundance of some zooplankton species exceeds a
+threshold — the top decile, say, or a stated number of animals per square metre.
+Everything else is a non-patch.
+
+That turns an abundance survey into a presence/absence problem, which a
+classifier can be fitted to and a fitted classifier can be projected onto a grid.
+Five stages, in order:
+
+1. **Load** the station data and label each station patch or non-patch.
+2. **Fetch** environmental covariates for the study area and match them to the
+   stations.
+3. **Fit** a model of patch probability on those covariates.
+4. **Evaluate** it against held-out folds.
+5. **Project** it onto the covariate grid, one map per month.
+
+One config file describes all five. Two runs differ by a file rather than by
+edited code, which is the whole design.
+
+## A run you can do right now
+
+The package ships a synthetic dataset and a config that uses it, so the pipeline
+can be exercised before you have Copernicus credentials or a station database.
+The covariate source is `mock`: nothing is downloaded.
+
+```{r config}
+config <- load_config(system.file("configs/mock_test.yaml", package = "taupatch"))
+
+# Write into the session's temp directory rather than the installed package.
+config$paths$zoop_file <- file.path(tempdir(), "mock_stations.csv")
+config$paths$output_dir <- file.path(tempdir(), "taupatch_vignette")
+
+generate_mock_zoop_data(config)
+```
+
+`load_config()` has already done more than read the file. It applied the
+defaults, resolved every relative path against the config's own location, and
+checked what is cheap to check: that the species resolves, the thresholds are
+well formed, the covariate names exist, and the columns it declares are actually
+in the CSV. A mistyped covariate is an error here, at no cost, rather than five
+minutes into a Copernicus download.
+
+Now run it.
+
+```{r run, message = FALSE}
+result <- run_taupatch(config)
+```
+
+That is the whole pipeline. On real data the same call takes as long as the
+downloads do; here it takes a couple of seconds.
+
+## Look at the stations first
+
+Before reading any model output, look at what it was fitted on. This is the step
+that catches a study area drawn wider than the survey, or an abundance field that
+is mostly zeros.
+
+```{r stations}
+station_summary(result$data)
+```
+
+Median abundance and the 90th percentile are the two numbers to check against
+each other. The config asks for a 90th-percentile threshold, so that second
+number *is* the patch threshold, and roughly a tenth of stations are patches by
+construction. Hold on to that — it decides how the evaluation has to be read.
+
+```{r station-map, fig.height = 5}
+plot_station_map(result$data)
+```
+
+## What came back
+
+`run_taupatch()` returns the fitted model, the projections, and the data behind
+both.
+
+```{r result-names}
+names(result)
+names(result$model)
+```
+
+### Which covariates mattered
+
+```{r importance}
+result$model$importance
+```
+
+Importance here is the drop in ROC AUC when a predictor is shuffled, averaged
+over several shuffles. It is computed the same way whichever model type was
+fitted, which is what makes a random forest's ranking comparable with a GAM's —
+engine-reported importances are not, since ranger's permutation drop and
+xgboost's split gain are different quantities on different scales.
+
+It says a predictor matters. It does not say what it *does*.
+
+### What each covariate does
+
+```{r partial, fig.height = 3.2}
+effects <- partial_effects(result$model$workflow,
+                           result$model$model_data,
+                           result$model$predictors)
+plot_partial_effects(effects)
+```
+
+Each panel sweeps one predictor across its range with the others held at the
+values they actually take, and plots the mean predicted patch probability. The
+mock data plants a latitudinal gradient and a seasonal cycle into both abundance
+and the covariates, so these curves should bend — a flat panel on real data means
+a predictor that is carrying nothing.
+
+## Reading the evaluation
+
+This is the part worth slowing down for, because the obvious reading of it is
+wrong.
+
+```{r evals}
+result$model$evaluation[, c("metric", "threshold", "value")]
+```
+
+Every threshold-dependent metric appears twice, at two cutoffs, and the table
+says which is which. That is deliberate.
+
+```{r cutoff}
+result$model$classification_threshold
+```
+
+**At the default 0.5 cutoff the model looks much worse than it is.** With only a
+tenth of stations patches, a classifier that is genuinely good at ranking will
+still put almost every station below 0.5, so sensitivity reads terribly. Compare
+the two `sens` rows above: the same model, the same predictions, a different
+number. Use `classification_threshold` when you binarise a projection — it is
+also written to `threshold.yaml` next to the outputs.
+
+**ROC AUC flatters an imbalanced problem.** Its false-positive rate has the large
+non-patch class in the denominator, so it stays high while precision does not.
+`pr_auc` is the honest companion, and the gap between the two is the thing to
+watch (Saito & Rehmsmeier 2015; Sofaer et al. 2019).
+
+The abundance threshold itself — the number of animals a patch starts at — is
+separate from the probability cutoff, and is recorded too:
+
+```{r threshold}
+result$model$threshold
+```
+
+A percentile run can therefore be reproduced later as an absolute one.
+
+## The maps
+
+One projection per configured month and year, written as a GeoTIFF and a PNG,
+and pooled into a single CSV carrying coordinates and dates.
+
+```{r projections}
+result$projections[, c("year", "month", "n_cells", "n_grid", "resolution")]
+```
+
+`n_cells` against `n_grid` is the gap report: how many cells of the covariate
+grid actually got a prediction. When they disagree, a covariate was missing there
+— cloud in the satellite chlorophyll, or a neighbourhood-derived covariate that
+is undefined on the border of the study area. That is what explains a patchy map,
+and the run log names the covariate responsible.
+
+The projection is onto the covariate grid at its own resolution, not back onto
+the station locations, so the map is a surface rather than a scatter of points.
+
+```{r map, fig.height = 5}
+suitability <- readr::read_csv(
+  file.path(config$paths$output_dir, "projections", "suitability.csv"),
+  show_col_types = FALSE
+)
+
+library(ggplot2)
+ggplot(subset(suitability, year == 2018 & month == 7),
+       aes(lon, lat, fill = suitability)) +
+  geom_raster() +
+  scale_fill_viridis_c(option = "magma", limits = c(0, 1), name = "P(patch)") +
+  coord_quickmap() +
+  labs(title = "cfin patch probability, July 2018", x = NULL, y = NULL) +
+  theme_bw()
+```
+
+## What is on disk
+
+```{r outputs}
+list.files(config$paths$output_dir, recursive = TRUE)[1:20]
+```
+
+`model.rds` is the fitted workflow, so a projection can be redone without
+refitting. `diagnostics/cv_predictions.csv` holds the held-out predictions, so
+any metric not in `evals.csv` can be computed without refitting either.
+
+## Moving to real data
+
+Three things change, and nothing else does.
+
+**The station file.** Point `paths.zoop_file` at your own CSV. If you have the
+raw NOAA EcoMon export rather than a formatted database, reshape it first —
+`format_zoop_data()` splits the date, renames the coordinate columns, strips the
+units off each taxon column and divides the abundances accordingly, and carries
+everything else through untouched.
+
+```{r format, eval = FALSE}
+format_zoop_data("raw_ecomon.csv", write_to = "data/zooplankton.csv")
+zoop_taxa("raw_ecomon.csv")   # every taxon the file carries
+```
+
+**The covariate source.** `covariates.source: copernicus` instead of `mock`, and
+the [Copernicus Marine
+Toolbox](https://help.marine.copernicus.eu/en/collections/4060068-copernicus-marine-toolbox)
+installed and logged in. The covariate names stay the same:
+
+```{r catalog}
+covariate_info()[1:8, c("name", "label", "units", "spatial")]
+```
+
+**The window and the area.** `dates`, `projection`, and `study_area.bbox`. Draw
+the bounding box wider than your stations if you use gradients or fronts, which
+are undefined on the edge of the grid.
+
+Write the new config rather than hand-editing YAML — `generate_config()`
+validates as it writes, so a mistyped covariate is an error at that call:
+
+```{r generate, eval = FALSE}
+generate_config("cfin_gom",
+                zoop_file = "data/zooplankton.csv",
+                selected = c("SST", "SSS", "CHL"),
+                bathymetry = "DEPTH",
+                transform = list(log1p = c("CHL", "DEPTH")))
+```
+
+## Doing it without writing code
+
+The same pipeline is a GUI. Every config field is a control, the run streams its
+progress, and **Download config** turns whatever you clicked into a YAML file you
+can re-run or hand to someone else.
+
+```{r app, eval = FALSE}
+run_taupatch_app()
+```
+
+## Where to go next
+
+The README covers each config block in depth — thresholds, derived covariates,
+transformations, resampling before the join, the four model types and the
+diagnostics each one contributes. In R:
+
+- `?load_config`, `?generate_config` — the config
+- `?covariate_info`, `?derivoce_covariates` — what can be a predictor
+- `?covariate_transforms` — and what can be done to one
+- `?model_types` — the four models, and what each is good for
+- `?partial_effects`, `?gam_smooth_terms` — reading a fitted model
+
+## Citing a run
+
+taupatch is mostly plumbing between other people's data and other people's
+methods. A run reaches Copernicus Marine products, NOAA terrain, and station data
+none of which belong to this package, and fits models and metrics that are each
+somebody's paper. `citation("taupatch")` gives this package and the paper it
+implements; the [References section of the
+README](https://github.com/chross22/taupatch#references) groups everything else
+so you can pick out the subset a particular run actually used. Each function's
+own help page carries the references relevant to it.

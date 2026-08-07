@@ -135,8 +135,16 @@ The Shiny app additionally needs `shiny`, `leaflet`, and `shinyFiles`.
 
 ## Try it without any data
 
-The app above opens on synthetic data. The same run headless, with no Copernicus
-credentials and no network access:
+The app above opens on synthetic data, and so does the **[Getting started
+vignette](vignettes/taupatch.Rmd)**, which walks one complete run — fit,
+evaluate, project, read the maps — and is the place to start if you would rather
+follow a worked example than read reference material:
+
+```r
+vignette("taupatch")
+```
+
+The same run headless, with no Copernicus credentials and no network access:
 
 ```r
 config <- load_config(system.file("configs/mock_test.yaml", package = "taupatch"))
