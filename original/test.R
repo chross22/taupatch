@@ -22,14 +22,14 @@ overwrite <- TRUE
 
 # Example parameters for test run
 params <- list(
-  version = "vtest.ben.nick",
+  version = "vtest",
   fp_md = "../calanus_data/Data/Databases/zooplankton_covar_data",
   species = "ctyp",
   biomod_dataset = "ECOMON",
   fp_covars = "../Env_Covars",
   env_covars = c("int_chl", "sst", "bat"),
   years = 2003:2006,
-  fp_out = "../Models.Test.ben.nick",
+  fp_out = "../Models.Test",
   threshold = 0.9, # Threshold computed at 90th percentile
   overwrite_proj = FALSE,
   format_data = FALSE

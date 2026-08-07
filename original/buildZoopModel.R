@@ -29,14 +29,14 @@ source("../calanus_data/Code/bind_years.R")
 
 # --- Example parameters for line-by-line function testing
 if (FALSE){
-  version = "vtest.ben.nick"
+  version = "vtest"
   fp_md = "../calanus_data/Data/Databases/zooplankton_covar_data"
   species = "ctyp"
   biomod_dataset = "ECOMON"
   fp_covars = "../Env_Covars"
   env_covars = c("wind", "int_chl", "sst", "jday") #, "uv_grad", "bat", "slope", "bots", "bott")
   years = 2003:2006
-  fp_out = "../Models.Test.ben.nick"
+  fp_out = "../Models.Test"
   threshold = 0.9
   format_data = TRUE
 }

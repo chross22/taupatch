@@ -18,8 +18,8 @@ It still describes the science we want, but the implementation has aged out from
 
 - **Environmental data is hardcoded to a server layout that no longer exists.**
   `original/load_covars.R` is ~200 lines of copy-pasted `raster::raster(file.path(...))`
-  calls against HYCOM / GlobColour / CCMP / SRTM30 directory trees rooted at
-  `/mnt/s1/projects/ecocast/...`. `original/get_climatology.R` repeats the same
+  calls against HYCOM / GlobColour / CCMP / SRTM30 directory trees rooted on a shared
+  server that has since been decommissioned. `original/get_climatology.R` repeats the same
   16-covariate `if (x %in% env_covars)` block **four times** — 185 lines to compute one
   climatology.
 - **Species are hardcoded.** A three-branch if-else (`original/buildZoopModel.R:104-110`)

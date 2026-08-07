@@ -9,9 +9,6 @@
 data/
 output/
 
-# The pre-rebuild biomod2 pipeline.
-original/
-
 # Build artifacts. Vignettes are rendered by R CMD build from the .Rmd, so the
 # rendered copies are not the source of anything.
 *.Rcheck/

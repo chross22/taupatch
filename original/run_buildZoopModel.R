@@ -12,7 +12,7 @@ source("buildZoopModel.R")
 
 config_file = commandArgs(trailingOnly = TRUE)
 if (length(config_file) < 1) {
-  config_file = '/mnt/s1/projects/ecocast/projects/calanus/Versions/vtest.ben.nick/vtest.ben.nick.yaml'
+  config_file = '../Versions/vtest/vtest.yaml'
 }
 if (!file.exists(config_file)) stop("config file not found: ", config_file)
 
@@ -20,14 +20,14 @@ if (!file.exists(config_file)) stop("config file not found: ", config_file)
 config <- yaml::read_yaml(config_file)
 
 if (FALSE){
-  version = "vtest.ben.nick"
-  fp_md = "/mnt/s1/projects/ecocast/projects/calanus/calanus_data/Data/Databases/zooplankton_covar_data" 
+  version = "vtest"
+  fp_md = "../calanus_data/Data/Databases/zooplankton_covar_data" 
   species = "ctyp"
   biomod_dataset = "ECOMON"
-  fp_covars = "/mnt/s1/projects/ecocast/projectdata/calanus4whales/Env_Covars"
+  fp_covars = "../Env_Covars"
   env_covars = c("int_chl", "sst", "bat")
   years = 2003:2006
-  fp_out = "/mnt/ecocast/projects/calanus/Versions/vtest.ben.nick"
+  fp_out = "../Versions/vtest"
   threshold = 0.9
   overwrite_proj = TRUE
   format_data = FALSE
@@ -66,14 +66,14 @@ yaml::write_yaml(config, config_file)
 # # 
 # # # Example parameters for test run
 # # params <- list(
-# #   version = "vtest.ben.nick",
+# #   version = "vtest",
 # #   fp_md = "../calanus_data/Data/Databases/zooplankton_covar_data",
 # #   species = "ctyp",
 # #   biomod_dataset = "ECOMON",
 # #   fp_covars = "../Env_Covars",
 # #   env_covars = c("int_chl", "sst", "bat"),
 # #   years = 2003:2006,
-# #   fp_out = "../Models.Test.ben.nick",
+# #   fp_out = "../Models.Test",
 # #   threshold = 0.9, # Threshold computed at 90th percentile
 # #   overwrite_proj = FALSE,
 # #   format_data = FALSE
