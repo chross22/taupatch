@@ -24,17 +24,26 @@ test_that("month names parse regardless of the session locale", {
   # NAs out, and the rows disappear much later as incomplete records.
   skip_on_cran()
   old <- Sys.getlocale("LC_TIME")
-  if (is.na(suppressWarnings(Sys.setlocale("LC_TIME", "fr_FR.UTF-8")))) {
-    skip("no French locale available to test against")
-  }
   on.exit(Sys.setlocale("LC_TIME", old), add = TRUE)
+
+  # Whether the locale actually changed, rather than what setlocale returned.
+  # A missing locale gives NA on some platforms and "" on others - a bare
+  # Ubuntu runner has no French locale and returns the empty string - so
+  # checking the return value let this run anywhere and fail on the CI boxes
+  # that had nothing to switch to.
+  suppressWarnings(Sys.setlocale("LC_TIME", "fr_FR.UTF-8"))
+  french <- Sys.getlocale("LC_TIME")
+  if (!grepl("^fr_FR", french)) {
+    skip("no French locale installed to test against")
+  }
 
   out <- split_dates(data.frame(DATE = c("05-JAN-03", "17-JUN-11")))
 
   expect_equal(out$year, c(2003L, 2011L))
   expect_equal(out$month, c(1L, 6L))
-  # The locale is left as it was found.
-  expect_equal(Sys.getlocale("LC_TIME"), "fr_FR.UTF-8")
+  # Parsing switches to C and puts back what it found, rather than leaving the
+  # session in whatever locale it needed.
+  expect_equal(Sys.getlocale("LC_TIME"), french)
 })
 
 test_that("other common date formats are recognized", {
