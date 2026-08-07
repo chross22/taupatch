@@ -125,6 +125,20 @@ write_model_outputs <- function(model, config) {
   # Record the computed threshold alongside the run, so a percentile-based run is
   # reproducible as an absolute one. The original wrote this back into the config
   # file itself, mutating the run's own inputs.
+  # The cutoff is estimated from the same held-out predictions it is then used
+  # to binarise, so how far it moves under resampling is part of what it means.
+  # Omitted rather than faked when the bootstrap was turned off.
+  interval <- model$classification_threshold_interval
+  interval_lines <- if (is.null(interval)) {
+    ""
+  } else {
+    paste0("\n# How far the cutoff itself moves across bootstrap resamples of\n",
+           "# the held-out predictions. A wide range here means a binarised map\n",
+           "# is sensitive to which stations happened to be sampled.\n",
+           "classification_threshold_lower: ", interval[["lower"]], "\n",
+           "classification_threshold_upper: ", interval[["upper"]])
+  }
+
   writeLines(
     paste0("species: ", config$species$resolved$name, "\n",
            "threshold_type: ", config$species$resolved$threshold$type, "\n",
@@ -133,7 +147,8 @@ write_model_outputs <- function(model, config) {
            "# Probability cutoff maximising TSS on held-out folds. The metrics\n",
            "# in evals.csv are at the default 0.5, which is rarely optimal when\n",
            "# only a tenth of stations are patches.\n",
-           "classification_threshold: ", model$classification_threshold),
+           "classification_threshold: ", model$classification_threshold,
+           interval_lines),
     file.path(out, "threshold.yaml")
   )
   invisible(NULL)

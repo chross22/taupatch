@@ -153,15 +153,30 @@ This is the part worth slowing down for, because the obvious reading of it is
 wrong.
 
 ```{r evals}
-result$model$evaluation[, c("metric", "threshold", "value")]
+result$model$evaluation[, c("metric", "threshold", "value", "std_err",
+                            "lower", "upper")]
 ```
 
 Every threshold-dependent metric appears twice, at two cutoffs, and the table
 says which is which. That is deliberate.
 
+The two uncertainty columns answer different questions, which is why blanks in
+one do not mean missing data. `std_err` is the spread across cross-validation
+folds — only the metrics averaged per fold have one, and `pr_auc`, `tss` and
+`precision` come from the pooled held-out predictions instead. `lower` and
+`upper` bootstrap those pooled predictions, so every row has an interval: one
+column asks how much the number moves when the model is refitted, the other how
+much it moves if the survey had sampled different stations.
+
 ```{r cutoff}
 result$model$classification_threshold
+result$model$classification_threshold_interval
 ```
+
+That cutoff is estimated from the same held-out predictions it then scores, so
+it moves too — the interval above is how far, and each bootstrap resample
+re-derives its own rather than being handed this one. A wide range there means a
+binarised map depends on which stations happened to be sampled.
 
 **At the default 0.5 cutoff the model looks much worse than it is.** With only a
 tenth of stations patches, a classifier that is genuinely good at ranking will

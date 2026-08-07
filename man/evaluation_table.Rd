@@ -4,7 +4,7 @@
 \alias{evaluation_table}
 \title{Assemble a self-explanatory evaluation table}
 \usage{
-evaluation_table(predictions, cv_metrics, cutoff)
+evaluation_table(predictions, cv_metrics, cutoff, bounds = NULL)
 }
 \arguments{
 \item{predictions}{held-out predictions from resampling}
@@ -12,10 +12,13 @@ evaluation_table(predictions, cv_metrics, cutoff)
 \item{cv_metrics}{the \code{tune::collect_metrics()} result, with TSS added}
 
 \item{cutoff}{the TSS-maximising cutoff}
+
+\item{bounds}{the result of \code{\link[=bootstrap_evaluation]{bootstrap_evaluation()}}, or \code{NULL} to leave the
+interval columns empty}
 }
 \value{
-a data frame with \code{metric}, \code{threshold}, \code{value}, \code{std_err}, and
-\code{note} columns
+a data frame with \code{metric}, \code{threshold}, \code{value}, \code{std_err},
+\code{lower}, \code{upper}, and \code{note} columns
 }
 \description{
 The cross-validated metrics table reports sensitivity, specificity and kappa
@@ -31,6 +34,20 @@ threshold-dependent ones twice: at 0.5, and at the cutoff that maximises TSS.
 Threshold-free metrics carry \code{NA} in that column, which is the honest entry —
 they do not have one.
 }
+\section{Two kinds of uncertainty, in two columns}{
+
+\code{std_err} is the spread across cross-validation folds, and only the metrics
+\code{tune} averages per fold have one — \code{pr_auc}, \code{tss} and \code{precision} are
+computed from the pooled held-out predictions, which uses the fold structure
+up. \code{lower} and \code{upper} come from \code{\link[=bootstrap_evaluation]{bootstrap_evaluation()}} instead and are
+present for every row.
+
+They are not two estimates of the same thing. The fold standard error is
+about refitting the model; the bootstrap interval is about which stations the
+survey happened to sample. A metric can be stable under one and not the
+other.
+}
+
 \references{
 Allouche O, Tsoar A, Kadmon R (2006). Assessing the accuracy of species
 distribution models: prevalence, kappa and the true skill statistic (TSS).

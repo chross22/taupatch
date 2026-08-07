@@ -156,7 +156,8 @@ test_that("the evaluation table states which cutoff each metric belongs to", {
   evaluation <- model$evaluation
 
   expect_setequal(names(evaluation),
-                  c("metric", "threshold", "value", "std_err", "note"))
+                  c("metric", "threshold", "value", "std_err", "lower", "upper",
+                    "note"))
 
   # Ranking metrics have no cutoff, and saying NA is the honest entry.
   expect_true(all(is.na(evaluation$threshold[evaluation$metric %in%

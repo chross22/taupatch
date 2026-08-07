@@ -86,6 +86,12 @@ fit_patch_model <- function(dat, config) {
   predictions <- tune::collect_predictions(resampled)
   cutoff <- optimal_threshold(predictions)
 
+  # Once, not once per consumer: the evaluation table and the cutoff's own
+  # interval are two readings of the same resampling.
+  bounds <- bootstrap_evaluation(predictions, cutoff,
+                                 times = bootstrap_times(config),
+                                 seed = config$model$seed)
+
   # The point estimate stays the model fitted on everything. The ensemble only
   # ever adds columns beside it, so turning uncertainty on never moves a map.
   ensemble <- if (is.null(uncertainty)) {
@@ -97,9 +103,13 @@ fit_patch_model <- function(dat, config) {
   list(
     workflow = fitted,
     metrics = cv_metrics,
-    evaluation = evaluation_table(predictions, cv_metrics, cutoff),
+    evaluation = evaluation_table(predictions, cv_metrics, cutoff, bounds),
     predictions = predictions,
     classification_threshold = cutoff,
+    # The cutoff is estimated, and how much it moves decides whether a binarised
+    # map means anything. Read off the same bootstrap as the metrics, so the two
+    # agree by construction.
+    classification_threshold_interval = threshold_interval(bounds),
     importance = permutation_importance(fitted, model_data, predictors),
     ensemble = ensemble,
     type = type,
@@ -126,11 +136,25 @@ fit_patch_model <- function(dat, config) {
 #' Threshold-free metrics carry `NA` in that column, which is the honest entry —
 #' they do not have one.
 #'
+#' @section Two kinds of uncertainty, in two columns:
+#' `std_err` is the spread across cross-validation folds, and only the metrics
+#' `tune` averages per fold have one — `pr_auc`, `tss` and `precision` are
+#' computed from the pooled held-out predictions, which uses the fold structure
+#' up. `lower` and `upper` come from [bootstrap_evaluation()] instead and are
+#' present for every row.
+#'
+#' They are not two estimates of the same thing. The fold standard error is
+#' about refitting the model; the bootstrap interval is about which stations the
+#' survey happened to sample. A metric can be stable under one and not the
+#' other.
+#'
 #' @param predictions held-out predictions from resampling
 #' @param cv_metrics the `tune::collect_metrics()` result, with TSS added
 #' @param cutoff the TSS-maximising cutoff
-#' @return a data frame with `metric`, `threshold`, `value`, `std_err`, and
-#'   `note` columns
+#' @param bounds the result of [bootstrap_evaluation()], or `NULL` to leave the
+#'   interval columns empty
+#' @return a data frame with `metric`, `threshold`, `value`, `std_err`,
+#'   `lower`, `upper`, and `note` columns
 #' @references
 #' Allouche O, Tsoar A, Kadmon R (2006). Assessing the accuracy of species
 #' distribution models: prevalence, kappa and the true skill statistic (TSS).
@@ -147,7 +171,7 @@ fit_patch_model <- function(dat, config) {
 #' \doi{10.1111/2041-210X.13140} — the same argument for rare events in species
 #' distribution models, which is what a patch is
 #' @keywords internal
-evaluation_table <- function(predictions, cv_metrics, cutoff) {
+evaluation_table <- function(predictions, cv_metrics, cutoff, bounds = NULL) {
   threshold_free <- c("roc_auc", "pr_auc")
 
   ranking <- data.frame(
@@ -172,6 +196,13 @@ evaluation_table <- function(predictions, cv_metrics, cutoff) {
   at_best$note <- "TSS-optimal cutoff; use this one to binarise a projection"
 
   out <- rbind(ranking, at_default, at_best)
+
+  # Every row gets an interval, including the ones that never had a standard
+  # error - which is the point. Column order puts the two uncertainty measures
+  # beside the value they belong to rather than at the end of the table.
+  out <- merge_bootstrap_bounds(out, bounds)
+  out <- out[c("metric", "threshold", "value", "std_err", "lower", "upper",
+               "note")]
   rownames(out) <- NULL
   out
 }
@@ -190,19 +221,72 @@ metrics_at <- function(predictions, cutoff) {
     return(data.frame(metric = character(), threshold = numeric(),
                       value = numeric(), stringsAsFactors = FALSE))
   }
-  called <- predictions$.pred_patch >= cutoff
-  is_patch <- predictions$patch == "patch"
-
-  sens <- sum(called & is_patch) / sum(is_patch)
-  spec <- sum(!called & !is_patch) / sum(!is_patch)
-  precision <- if (sum(called) > 0) sum(called & is_patch) / sum(called) else NA_real_
+  values <- confusion_metrics(predictions$.pred_patch >= cutoff,
+                             predictions$patch == "patch")
 
   data.frame(
-    metric = c("sens", "spec", "tss", "precision"),
+    metric = names(values),
     threshold = cutoff,
-    value = c(sens, spec, sens + spec - 1, precision),
+    value = unname(values),
     stringsAsFactors = FALSE
   )
+}
+
+#' Sensitivity, specificity, TSS and precision from a thresholded prediction
+#'
+#' The arithmetic on its own, with no data frame around it. The reported table
+#' and the bootstrap both go through here, so the two cannot come to disagree
+#' about what a metric is — and the bootstrap can call it a few thousand times
+#' without paying for a data frame each time.
+#'
+#' @param called logical, whether each observation was called a patch
+#' @param is_patch logical, whether each observation is one
+#' @return a named numeric vector
+#' @keywords internal
+confusion_metrics <- function(called, is_patch) {
+  positives <- sum(is_patch)
+  negatives <- sum(!is_patch)
+
+  sens <- if (positives > 0) sum(called & is_patch) / positives else NA_real_
+  spec <- if (negatives > 0) sum(!called & !is_patch) / negatives else NA_real_
+  precision <- if (sum(called) > 0) sum(called & is_patch) / sum(called) else NA_real_
+
+  c(sens = sens, spec = spec, tss = sens + spec - 1, precision = precision)
+}
+
+#' The TSS-maximising cutoff, computed directly
+#'
+#' The arithmetic behind [optimal_threshold()], without building an ROC curve as
+#' a data frame to do it — the bootstrap runs this a few thousand times, and the
+#' tibble was most of the cost. The reported cutoff and the bootstrapped ones go
+#' through here alike, so they cannot come to mean different things.
+#'
+#' @param is_patch logical, whether each observation is a patch
+#' @param probability predicted probability of a patch
+#' @return the TSS-maximising cutoff, or `NA_real_`
+#' @keywords internal
+best_cutoff <- function(is_patch, probability) {
+  keep <- is.finite(probability) & !is.na(is_patch)
+  probability <- probability[keep]
+  is_patch <- is_patch[keep]
+
+  n <- length(probability)
+  positives <- sum(is_patch)
+  negatives <- n - positives
+  if (n == 0 || positives == 0 || negatives == 0) return(NA_real_)
+
+  ord <- order(probability, decreasing = TRUE)
+  sorted <- probability[ord]
+  hit <- is_patch[ord]
+
+  # Sensitivity and specificity at every cutoff at once: calling the top i
+  # predictions patches gives cumsum(hit)[i] true positives.
+  tss <- (cumsum(hit) / positives) - (cumsum(!hit) / negatives)
+
+  # Only where a tie ends. A cutoff cannot split equal probabilities, so the
+  # points inside a run of them are not achievable.
+  achievable <- c(sorted[-n] != sorted[-1], TRUE)
+  sorted[achievable][which.max(tss[achievable])]
 }
 
 #' Pull one metric's mean from a collect_metrics() table
@@ -250,11 +334,7 @@ optimal_threshold <- function(predictions) {
   if (is.null(predictions) || !".pred_patch" %in% names(predictions)) {
     return(NA_real_)
   }
-  curve <- yardstick::roc_curve(predictions, truth = "patch", ".pred_patch")
-  curve <- curve[is.finite(curve$.threshold), ]
-  if (nrow(curve) == 0) return(NA_real_)
-
-  curve$.threshold[which.max(curve$sensitivity + curve$specificity - 1)]
+  best_cutoff(predictions$patch == "patch", predictions$.pred_patch)
 }
 
 #' Build the preprocessing recipe

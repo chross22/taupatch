@@ -23,6 +23,7 @@
   - [Combining products of different resolution](#combining-products-of-different-resolution)
   - [Model type](#model-type)
   - [Training and projection windows](#training-and-projection-windows)
+  - [How far to trust a map](#how-far-to-trust-a-map)
   - [Reading the evaluation](#reading-the-evaluation)
 - [Outputs](#outputs)
 - [Repository layout](#repository-layout)
@@ -787,20 +788,40 @@ behaviour to expect.
 `evals.csv` names the cutoff each metric belongs to, because the answer changes
 a lot with it:
 
-| metric | threshold | value |
-|---|---|---|
-| roc_auc | | 0.876 |
-| pr_auc | | 0.433 |
-| sens | 0.500 | 0.261 |
-| spec | 0.500 | 0.977 |
-| tss | 0.500 | 0.238 |
-| sens | 0.074 | 0.870 |
-| spec | 0.074 | 0.767 |
-| tss | 0.074 | 0.637 |
+| metric | threshold | value | std_err | lower | upper |
+|---|---|---|---|---|---|
+| roc_auc | | 0.857 | 0.027 | 0.803 | 0.897 |
+| pr_auc | | 0.357 | | 0.262 | 0.483 |
+| sens | 0.500 | 0.200 | 0.025 | 0.109 | 0.304 |
+| spec | 0.500 | 0.968 | 0.010 | 0.953 | 0.981 |
+| tss | 0.500 | 0.168 | | 0.074 | 0.272 |
+| precision | 0.500 | 0.394 | | 0.231 | 0.568 |
+| sens | 0.051 | 0.862 | | 0.732 | 0.966 |
+| spec | 0.051 | 0.740 | | 0.655 | 0.872 |
+| tss | 0.051 | 0.601 | | 0.547 | 0.712 |
+| precision | 0.051 | 0.258 | | 0.200 | 0.413 |
 
 `tss` is the true skill statistic, `sens + spec - 1`, which is the accuracy
 measure Allouche et al. (2006) recommend for presence/absence models because,
 unlike kappa, it does not vary with prevalence.
+
+**The two uncertainty columns are not two estimates of the same thing.**
+`std_err` is the spread across cross-validation folds, so only the metrics
+`tune` averages per fold have one — `pr_auc`, `tss` and `precision` are computed
+from the pooled held-out predictions, which uses the fold structure up, and
+those rows are blank. `lower` and `upper` come from bootstrapping those pooled
+predictions and are present on every row. One asks how much the number moves
+when the model is refitted; the other asks how much it moves if the survey had
+sampled different stations. A metric can be stable under one and not the other.
+
+The bootstrap **re-derives the optimal cutoff inside each resample** rather than
+holding it at the reported value. The cutoff is estimated from the same
+predictions it then scores, so freezing it would report the bottom four rows as
+more certain than they are. `threshold.yaml` carries the cutoff's own interval
+for the same reason — worth reading before trusting a binarised map to it.
+
+`model.bootstrap` sets the number of resamples, default 2000; `false` turns the
+interval columns off and leaves them empty. It costs a few seconds.
 
 Two things this makes visible that a single-column table hides:
 
@@ -832,7 +853,7 @@ evals.csv              performance, stating the cutoff each metric belongs to
 cv_metrics.csv         the raw per-fold resampling table
 var_importance.csv     permutation variable importance
 var_importance.png
-threshold.yaml         the abundance threshold actually used
+threshold.yaml         the abundance threshold used, and the probability cutoff with its interval
 diagnostics/roc_curve.png, pr_curve.png, calibration.png, threshold_performance.png
 diagnostics/cv_predictions.csv     held-out predictions, for any metric not tabulated
 diagnostics/partial_effects.png    what each predictor does to patch probability
@@ -865,6 +886,7 @@ R/model.R               fit_patch_model()
 R/model_types.R         model_types(), permutation_importance()
 R/plot_effects.R        partial_effects(), glm_coefficients(), gam_smooth_terms()
 R/uncertainty.R         novelty_surface(), the projection interval
+R/evaluation_boot.R     bootstrap_evaluation(), the interval on every metric
 R/project.R             project_patch_model()
 R/plotting.R            plot_projection(), plot_importance()
 R/pipeline.R            run_taupatch()
