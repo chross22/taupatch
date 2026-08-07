@@ -218,6 +218,69 @@ ggplot(subset(suitability, year == 2018 & month == 7),
   theme_bw()
 ```
 
+## How far to trust the map
+
+Everything above is a point estimate. `projection.uncertainty` adds two layers
+that say where not to believe it — off by default, because on a real grid the
+extra prediction passes cost real time.
+
+```{r uncertainty, message = FALSE}
+config$projection$uncertainty <- TRUE
+config$paths$output_dir <- file.path(tempdir(), "taupatch_vignette_unc")
+
+result <- run_taupatch(config)
+
+suitability <- readr::read_csv(
+  file.path(config$paths$output_dir, "projections", "suitability.csv"),
+  show_col_types = FALSE
+)
+names(suitability)
+```
+
+The models behind the interval are the ones cross-validation already fitted and
+would otherwise have thrown away, so the ensemble itself is free.
+
+```{r ensemble}
+length(result$model$ensemble)
+```
+
+Two layers, two different questions. `suitability_sd` and the interval say how
+much the surface moves when the model is refitted on resampled data.
+`novelty` says whether the cell is somewhere the model has ever been:
+
+```{r novelty}
+summary(suitability$novelty)
+
+# Which covariate puts a cell outside the training range, where one is.
+table(suitability$novel_variable[suitability$novelty < 0])
+```
+
+Novelty runs to 100 at the median of the training data and **goes negative
+outside its range** — those cells are extrapolation, and the model has no
+evidence for what it claims there.
+
+Read both, and do not treat a narrow interval as reassurance on its own. Every
+ensemble member was trained on the same data, so they can walk off the end of it
+together and agree the whole way. That combination — confident and novel — is
+the one to look for:
+
+```{r disagree}
+extrapolated <- suitability$novelty < 0
+data.frame(
+  cells = c(sum(!extrapolated), sum(extrapolated)),
+  median_sd = round(c(median(suitability$suitability_sd[!extrapolated]),
+                      median(suitability$suitability_sd[extrapolated])), 4),
+  row.names = c("inside training range", "outside training range")
+)
+```
+
+Each month gets a two-panel figure in `plots/`, and the layers go into the
+GeoTIFF beside the mean rather than into a second file:
+
+```{r layers}
+names(terra::rast(result$projections$geotiff[1]))
+```
+
 ## What is on disk
 
 ```{r outputs}

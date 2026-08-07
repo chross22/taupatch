@@ -23,6 +23,143 @@ plot_projection <- function(predicted, year, month, species, path) {
   invisible(path)
 }
 
+#' Plot how far a monthly projection can be trusted
+#'
+#' The companion to [plot_projection()]: the same cells, panelled by what is
+#' uncertain about them rather than by what is predicted. Whichever of the
+#' uncertainty surfaces the run produced are drawn, and nothing else.
+#'
+#' The two panels are deliberately not merged into a single "confidence" layer.
+#' They measure different things and are free to disagree in either direction,
+#' and the disagreement is the informative part: a cell can be stable across
+#' every member and still be extrapolated, because agreement between members
+#' trained on the same data is not evidence about ground the data never covered.
+#' Blending the two would average that case away instead of showing it.
+#'
+#' Diverging colour on the novelty panel, centred at zero, because zero is the
+#' meaningful break: above it the model is interpolating, below it the cell is
+#' outside the training range on some predictor and the model has no evidence
+#' for what it says there.
+#'
+#' @param predicted a projection from `predict_grid()` with uncertainty columns
+#' @param year year being projected
+#' @param month month being projected
+#' @param species species name, for the title
+#' @param path where to write the PNG
+#' @return `path` invisibly, or `NULL` when there is nothing to draw
+#' @seealso [novelty_surface()] for how the novelty panel is computed
+#' @export
+plot_projection_uncertainty <- function(predicted, year, month, species, path) {
+  panels <- list()
+
+  if ("suitability_sd" %in% names(predicted)) {
+    panels$spread <- ggplot2::ggplot(
+      predicted, ggplot2::aes(x = .data$lon, y = .data$lat,
+                              fill = .data$suitability_sd)) +
+      ggplot2::geom_raster() +
+      ggplot2::scale_fill_viridis_c(option = "magma", na.value = "white",
+                                     name = "SD") +
+      ggplot2::labs(subtitle = "Spread across the ensemble")
+  }
+
+  if ("novelty" %in% names(predicted)) {
+    # Extrapolated cells are usually a small minority, and a scale stretched
+    # over the whole range renders them invisible - which defeats the panel.
+    # So the visual weight goes to the negatives: saturated red below zero,
+    # against a muted ramp above it. The alarming colour marks the cells to
+    # distrust rather than, as a plain diverging scale does, the safest ones.
+    outside <- sum(!is.na(predicted$novelty) & predicted$novelty < 0)
+    scored <- sum(!is.na(predicted$novelty))
+
+    subtitle <- if (outside == 0) {
+      "Every cell is inside the training range"
+    } else {
+      culprit <- names(sort(table(
+        predicted$novel_variable[!is.na(predicted$novelty) & predicted$novelty < 0]
+      ), decreasing = TRUE))[1]
+      sprintf("%d of %d cells (%d%%) are outside the training range, mostly %s",
+              outside, scored, max(1, round(100 * outside / scored)), culprit)
+    }
+
+    panels$novelty <- ggplot2::ggplot(
+      predicted, ggplot2::aes(x = .data$lon, y = .data$lat,
+                              fill = .data$novelty)) +
+      ggplot2::geom_raster() +
+      ggplot2::scale_fill_gradientn(
+        colours = c("#67001f", "#d6604d", "#fddbc7", "#e8eef2", "#7fa8c4",
+                    "#3a6b8a"),
+        # Zero sits where the warm colours end. rescale puts the break at the
+        # true zero of this month's range rather than at the midpoint of it,
+        # so the boundary means the same thing on every map in a run.
+        values = novelty_scale_positions(predicted$novelty),
+        na.value = "white", name = "Similarity"
+      ) +
+      ggplot2::labs(subtitle = subtitle)
+  }
+
+  if (length(panels) == 0) return(invisible(NULL))
+
+  panels <- lapply(panels, function(p) {
+    p + ggplot2::coord_quickmap() +
+      ggplot2::labs(x = NULL, y = NULL) +
+      ggplot2::theme_bw() +
+      ggplot2::theme(panel.grid = ggplot2::element_blank(),
+                     legend.position = "bottom")
+  })
+
+  title <- paste0(species, " - ", month.name[month], " ", year,
+                  ": how far to trust it")
+
+  # Stacked with a shared title rather than side by side, so each panel keeps
+  # the aspect ratio the coastline has and neither is squashed. patchwork is a
+  # Suggests, and its `/` operator is the whole reason it is wanted here - so
+  # without it, fall back to the panel that carries more of the answer rather
+  # than failing. Novelty is that panel: the spread cannot tell you a cell is
+  # off the end of the training data, and the novelty surface cannot be
+  # reconstructed from anything else in the output.
+  stacked <- requireNamespace("patchwork", quietly = TRUE) && length(panels) > 1
+  combined <- if (stacked) {
+    Reduce(function(a, b) a / b, panels) +
+      patchwork::plot_annotation(title = title)
+  } else {
+    chosen <- panels[[if ("novelty" %in% names(panels)) "novelty" else 1]]
+    chosen + ggplot2::labs(title = title)
+  }
+
+  ggplot2::ggsave(path, plot = combined, width = 7,
+                  height = if (stacked) 11 else 7, dpi = 150)
+  invisible(path)
+}
+
+#' Where zero falls on a novelty colour ramp
+#'
+#' `scale_fill_gradientn()` places its colours at positions in `[0, 1]` across
+#' the data range, so zero — the only value on a novelty surface that means
+#' anything fixed — lands somewhere different on every map unless it is put
+#' there deliberately. This returns positions that pin the warm-to-cool break to
+#' the true zero, so red means extrapolated on every month of a run rather than
+#' meaning "low for this month".
+#'
+#' @param novelty the novelty values being plotted
+#' @return a vector of six positions in `[0, 1]`, for the six ramp colours
+#' @keywords internal
+novelty_scale_positions <- function(novelty) {
+  finite <- novelty[is.finite(novelty)]
+  # Nothing to anchor: an all-positive or empty surface gets an even ramp.
+  if (length(finite) == 0) return(seq(0, 1, length.out = 6))
+
+  low <- min(finite)
+  high <- max(finite)
+  if (high <= low) return(seq(0, 1, length.out = 6))
+
+  zero <- (0 - low) / (high - low)
+  # Clamped off the ends so the break stays visible when everything is on one
+  # side of zero, which is the common case.
+  zero <- min(max(zero, 0.02), 0.98)
+
+  c(0, zero * 0.5, zero * 0.95, zero, zero + (1 - zero) * 0.5, 1)
+}
+
 #' Build a leaflet map of a projection GeoTIFF
 #'
 #' @param geotiff path to a projection GeoTIFF written by `project_patch_model()`

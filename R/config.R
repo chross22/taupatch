@@ -24,6 +24,7 @@ load_config <- function(path) {
   validate_dates(config)
   validate_study_area(config)
   validate_covariates(config)
+  validate_uncertainty(config)
 
   config$species$resolved <- resolve_species(config)
 

@@ -4,15 +4,19 @@
 \alias{predict_grid}
 \title{Predict patch probability across a covariate grid}
 \usage{
-predict_grid(model, grid)
+predict_grid(model, grid, uncertainty = NULL)
 }
 \arguments{
 \item{model}{a fitted model from \code{fit_patch_model()}}
 
 \item{grid}{a covariate grid from \code{covariate_grid()}}
+
+\item{uncertainty}{settings from \code{\link[=uncertainty_settings]{uncertainty_settings()}}, or \code{NULL} for the
+point estimate alone}
 }
 \value{
-a tibble of \code{lon}, \code{lat}, \code{suitability}, or \code{NULL} if no complete rows
+a tibble of \code{lon}, \code{lat}, \code{suitability}, and, with \code{uncertainty}, the
+spread and novelty columns; \code{NULL} if no complete rows
 }
 \description{
 Rows with missing predictors are dropped before predicting rather than

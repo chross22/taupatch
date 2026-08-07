@@ -260,6 +260,20 @@ ui <- fluidPage(
                       value = base_config$projection$years, step = 1, sep = ""),
           sliderInput("proj_months", "Months", min = 1, max = 12,
                       value = base_config$projection$months, step = 1)
+        ),
+        # Off by default here as in a config: it re-predicts every month once
+        # per fold, so on a real grid it is the slowest thing a run can be
+        # asked to add.
+        checkboxInput("uncertainty", "Add uncertainty layers to the maps",
+                      value = !is.null(base_config$projection$uncertainty) &&
+                        !isFALSE(base_config$projection$uncertainty)),
+        conditionalPanel(
+          "input.uncertainty",
+          helpText("Two extra layers per month. How much the probability moves",
+                   "when the model is refitted, and whether the cell is inside",
+                   "the range the model was trained on at all - a confident",
+                   "prediction somewhere it has never seen is still a guess.",
+                   "Slower: every month is predicted once per fold.")
         )
       ),
 
@@ -866,6 +880,10 @@ server <- function(input, output, session) {
       config$projection$years <- input$proj_years %||% input$years
       config$projection$months <- input$proj_months %||% input$months
     }
+
+    # NULL rather than FALSE when off, so the downloaded config does not carry
+    # a line saying the default.
+    config$projection$uncertainty <- if (isTRUE(input$uncertainty)) TRUE else NULL
 
     config$study_area$bbox <- list(xmin = input$xmin, xmax = input$xmax,
                                     ymin = input$ymin, ymax = input$ymax)

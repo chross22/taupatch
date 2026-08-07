@@ -44,6 +44,7 @@ Suggests:
     xgboost,
     mgcv,
     marmap,
+    patchwork,
     rmarkdown,
     shiny,
     shinyFiles,

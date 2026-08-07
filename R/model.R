@@ -56,7 +56,17 @@ fit_patch_model <- function(dat, config) {
   # Predictions are retained so an ROC curve can be drawn from held-out folds.
   # Without this, only the summary metrics survive resampling and the curve
   # would have to be redrawn on training data, which flatters the model.
-  control <- tune::control_resamples(save_pred = TRUE)
+  #
+  # The fold models are kept too when a projection interval is wanted. They are
+  # fitted either way and normally discarded, so asking for them back is free -
+  # the cost of the interval is entirely in predicting from them later.
+  uncertainty <- uncertainty_settings(config)
+  keep_models <- !is.null(uncertainty) && identical(uncertainty$method, "folds")
+  control <- if (keep_models) {
+    tune::control_resamples(save_pred = TRUE, extract = function(x) x)
+  } else {
+    tune::control_resamples(save_pred = TRUE)
+  }
 
   if (isTRUE(config$model$tune)) {
     tuned <- tune::tune_grid(wf, resamples = folds, grid = config$model$tune_grid %||% 10,
@@ -76,6 +86,14 @@ fit_patch_model <- function(dat, config) {
   predictions <- tune::collect_predictions(resampled)
   cutoff <- optimal_threshold(predictions)
 
+  # The point estimate stays the model fitted on everything. The ensemble only
+  # ever adds columns beside it, so turning uncertainty on never moves a map.
+  ensemble <- if (is.null(uncertainty)) {
+    list()
+  } else {
+    projection_ensemble(resampled, wf, model_data, uncertainty)
+  }
+
   list(
     workflow = fitted,
     metrics = cv_metrics,
@@ -83,6 +101,7 @@ fit_patch_model <- function(dat, config) {
     predictions = predictions,
     classification_threshold = cutoff,
     importance = permutation_importance(fitted, model_data, predictors),
+    ensemble = ensemble,
     type = type,
     # Kept so diagnostics that need to re-predict - partial effects above all -
     # can be produced without refitting. It is the station table, so hundreds to

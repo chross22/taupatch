@@ -724,6 +724,64 @@ projection:                   # months that get mapped; omit to reuse the above
   months: [1, 12]
 ```
 
+### How far to trust a map
+
+A projection is a surface of point estimates, and a point estimate invites more
+confidence than it has earned. `projection.uncertainty` adds two layers that say
+where not to:
+
+```yaml
+projection:
+  uncertainty: true           # or the block below, to change the defaults
+```
+
+```yaml
+projection:
+  uncertainty:
+    method: folds             # or: bootstrap
+    replicates: 200           # bootstrap only
+    level: 0.9                # interval width
+    novelty: true
+```
+
+They answer different questions, and a cell can fail one and pass the other:
+
+| Layer | The question it answers |
+|---|---|
+| `suitability_sd`, `suitability_lower`, `suitability_upper` | How much would this probability move if the training data had been slightly different? |
+| `novelty`, `novel_variable` | Is this cell even in the range the model was trained on — and if not, which covariate put it outside? |
+
+**The spread** comes from predicting each month with every model
+cross-validation already fitted. Those models exist either way and are normally
+discarded, so the ensemble is free; the cost is the extra prediction passes,
+which is why this is off by default. It works identically for all four model
+types, the same model-agnostic choice the package makes for variable importance,
+so a forest's interval and a GAM's mean the same thing and can be compared.
+
+**The novelty surface** is the MESS of Elith et al. (2010). It runs to 100 at the
+median of the training data, falls toward 0 near the edge of it, and **goes
+negative outside it** — `-50` means half a training range beyond the edge. Those
+cells are extrapolation, and the model has no evidence for what it says there.
+`novel_variable` names the covariate responsible, which is the actionable half:
+"this shelf is extrapolated because its chlorophyll is higher than any station
+saw" is a decision about widening the training window, where a bare warning is
+not.
+
+Read both, because **agreement between ensemble members is not evidence**. They
+were all trained on the same data and can walk off the end of it together, so a
+narrow interval over a novel cell is the one combination that looks reassuring
+and is not. The two are drawn as separate panels for that reason rather than
+blended into a single "confidence" layer.
+
+Two honest limits. The interval is a percentile range over members, not a
+calibrated confidence interval — with `folds` there are only `model.cv_folds` of
+them, and ten members cannot support a 95% interval, which is why `level`
+defaults to 0.9 and `bootstrap` exists. And the point estimate is not guaranteed
+to land inside it: it comes from the model fitted on all the data and the
+interval from models fitted on parts, so they are different quantities. On the
+mock run a 90% interval contains it for about 90% of cells, which is the
+behaviour to expect.
+
 ### Reading the evaluation
 
 `evals.csv` names the cutoff each metric belongs to, because the answer changes
@@ -782,9 +840,11 @@ diagnostics/coefficients.png       glm only: signed effects with intervals
 diagnostics/smooth_terms.csv       gam only: effective degrees of freedom per smooth
 diagnostics/gam_smooths.png        gam only, with fancygam: fitted smooths with error bands
 projections/suitability.csv       every cell of every month: species, year, month, lon, lat, probability
+                                  plus the interval and novelty columns, with projection.uncertainty
 projections/suitability.grd       the same, as one raster with a layer per month (projection.write_grd)
-projections/<species>_<year>_<month>.tif
+projections/<species>_<year>_<month>.tif      one layer, or one per surface with projection.uncertainty
 plots/<species>_<year>_<month>.png
+plots/<species>_<year>_<month>_uncertainty.png   the spread and novelty panels, with projection.uncertainty
 covariates/monthly_means.csv       study-area mean per covariate, month, and year
 covariates/<covariate>_heatmap.png month-by-year heatmap
 bathymetry/                        marmap's cached NOAA download, if used
@@ -804,6 +864,7 @@ R/derivoce.R            derivoce_covariates(), add_derivoce_covariates()
 R/model.R               fit_patch_model()
 R/model_types.R         model_types(), permutation_importance()
 R/plot_effects.R        partial_effects(), glm_coefficients(), gam_smooth_terms()
+R/uncertainty.R         novelty_surface(), the projection interval
 R/project.R             project_patch_model()
 R/plotting.R            plot_projection(), plot_importance()
 R/pipeline.R            run_taupatch()
@@ -1007,6 +1068,10 @@ Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
   ONE* **10**(3), e0118432.
   [doi:10.1371/journal.pone.0118432](https://doi.org/10.1371/journal.pone.0118432)
   — `pr_auc`
+- Elith J, Kearney M, Phillips S (2010). The art of modelling range-shifting
+  species. *Methods in Ecology and Evolution* **1**(4), 330–342.
+  [doi:10.1111/j.2041-210X.2010.00036.x](https://doi.org/10.1111/j.2041-210X.2010.00036.x)
+  — the multivariate environmental similarity surface behind `novelty`
 - Sofaer HR, Hoeting JA, Jarnevich CS (2019). The area under the precision-recall
   curve as a performance metric for rare binary events. *Methods in Ecology and
   Evolution* **10**(4), 565–577.

@@ -61,6 +61,19 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
           round(resolution * 111), " km), the grid the covariates were joined ",
           "onto")
 
+  uncertainty <- uncertainty_settings(config)
+  if (!is.null(uncertainty)) {
+    members <- length(model$ensemble)
+    message("  uncertainty on: ", members, "-member ", uncertainty$method,
+            " ensemble, ", round(100 * uncertainty$level), "% interval",
+            if (isTRUE(uncertainty$novelty)) ", plus a novelty surface" else "")
+    if (members < 2) {
+      warning("projection.uncertainty is on, but the ensemble has ", members,
+              " member(s), so no interval can be computed. The maps are ",
+              "written without one.", call. = FALSE)
+    }
+  }
+
   # Written a month at a time rather than gathered and written at the end. A
   # decade of a real grid is tens of millions of rows, which is fine on disk and
   # not fine held in memory while the rest of the run finishes.
@@ -78,7 +91,7 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
         grid <- datamatch::attach_bathymetry(grid, bathy, config$covariates$bathymetry)
       }
 
-      predicted <- predict_grid(model, grid)
+      predicted <- predict_grid(model, grid, uncertainty)
       # A cell is dropped when any predictor is missing there. With a gradient or
       # a front among them that is the whole border of the study area, and with a
       # lag it is the first month - neither of which is obvious from the map.
@@ -115,10 +128,27 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
       geotiff_path <- NA_character_
       png_path <- NA_character_
 
+      # A cell outside the training range is one the model has no evidence
+      # about, and an unremarked map does not say so. Reported per month,
+      # because it is the projected months at the edges of the record that
+      # usually drift out.
+      extra <- uncertainty_layers(predicted)
+      if ("novelty" %in% extra) {
+        note <- novelty_message(predicted$novelty, predicted$novel_variable)
+        if (!is.null(note)) {
+          message("  ", year, "-", sprintf("%02d", month), ": ", note)
+        }
+      }
+
+      # One raster with a layer per surface when uncertainty is on, rather than
+      # a second file beside the first: they are the same cells on the same
+      # grid, and a GIS reading the tif gets the interval along with the mean
+      # instead of having to know to look for it.
       rast <- terra::rast(
-        as.data.frame(predicted[c("lon", "lat", "suitability")]),
+        as.data.frame(predicted[c("lon", "lat", "suitability", extra)]),
         type = "xyz", crs = "EPSG:4326"
       )
+      names(rast) <- c("suitability", extra)
 
       if (isTRUE(config$projection$write_geotiff)) {
         geotiff_path <- file.path(proj_dir, paste0(stem, ".tif"))
@@ -129,6 +159,16 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
       if (isTRUE(config$projection$write_png)) {
         png_path <- file.path(plot_dir, paste0(stem, ".png"))
         plot_projection(predicted, year, month, species, png_path)
+
+        # Beside the suitability map rather than on it. Drawing an interval on
+        # a filled surface means picking something to hide, and the question
+        # "where is the patch" and the question "where should I believe this"
+        # are read one after the other rather than at once.
+        if (length(extra) > 0) {
+          plot_projection_uncertainty(predicted, year, month, species,
+                                      file.path(plot_dir,
+                                                paste0(stem, "_uncertainty.png")))
+        }
       }
 
       if (write_table) {
@@ -141,6 +181,9 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
           suitability = predicted$suitability,
           stringsAsFactors = FALSE
         )
+        for (layer in extra) rows[[layer]] <- predicted[[layer]]
+        if ("novelty" %in% extra) rows$novel_variable <- predicted$novel_variable
+
         readr::write_csv(rows, table_path, append = !first_row,
                          col_names = first_row)
         first_row <- FALSE
@@ -191,18 +234,48 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
 #'
 #' @param model a fitted model from `fit_patch_model()`
 #' @param grid a covariate grid from `covariate_grid()`
-#' @return a tibble of `lon`, `lat`, `suitability`, or `NULL` if no complete rows
+#' @param uncertainty settings from [uncertainty_settings()], or `NULL` for the
+#'   point estimate alone
+#' @return a tibble of `lon`, `lat`, `suitability`, and, with `uncertainty`, the
+#'   spread and novelty columns; `NULL` if no complete rows
 #' @keywords internal
-predict_grid <- function(model, grid) {
+predict_grid <- function(model, grid, uncertainty = NULL) {
   complete <- grid[stats::complete.cases(grid[model$predictors]), ]
   if (nrow(complete) == 0) return(NULL)
 
   probs <- stats::predict(model$workflow, new_data = complete, type = "prob")
-  tibble::tibble(
+  out <- tibble::tibble(
     lon = complete$lon,
     lat = complete$lat,
     suitability = probs$.pred_patch
   )
+  if (is.null(uncertainty)) return(out)
+
+  spread <- ensemble_spread(model$ensemble, complete, uncertainty$level)
+  if (!is.null(spread)) out <- dplyr::bind_cols(out, spread)
+
+  if (isTRUE(uncertainty$novelty)) {
+    out <- dplyr::bind_cols(
+      out, novelty_surface(complete, model$model_data, model$predictors)
+    )
+  }
+  out
+}
+
+#' Uncertainty layers present on a projection
+#'
+#' Which of the optional columns [predict_grid()] actually produced. The
+#' ensemble can come back empty — a model type that refuses to refit on a
+#' resample, say — and a map is written either way rather than the run failing
+#' at the last step.
+#'
+#' @param predicted a projection from [predict_grid()]
+#' @return character vector of column names beyond `suitability`
+#' @keywords internal
+uncertainty_layers <- function(predicted) {
+  intersect(c("suitability_sd", "suitability_lower", "suitability_upper",
+              "novelty"),
+            names(predicted))
 }
 
 #' Write the monthly projections as one multi-layer raster
