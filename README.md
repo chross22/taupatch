@@ -7,6 +7,7 @@
 <details>
 <summary><b>Contents</b></summary>
 
+- [Run it without writing code](#run-it-without-writing-code)
 - [Installation](#installation)
 - [Try it without any data](#try-it-without-any-data)
 - [Running on real data](#running-on-real-data)
@@ -22,7 +23,6 @@
   - [Combining products of different resolution](#combining-products-of-different-resolution)
   - [Model type](#model-type)
   - [Training and projection windows](#training-and-projection-windows)
-- [The app](#the-app)
   - [Reading the evaluation](#reading-the-evaluation)
 - [Outputs](#outputs)
 - [Repository layout](#repository-layout)
@@ -52,6 +52,51 @@ Species, life stages, covariates, thresholds, study area, and model settings all
 come from a YAML config now, rather than from editing code. See
 [`docs/rebuild_plan.md`](docs/rebuild_plan.md) for what changed and why.
 
+## Run it without writing code
+
+The whole model runs from a GUI. Point it at a station CSV, pick a species and a
+threshold, choose covariates, press Run — no config file and no R beyond the one
+line that starts it.
+
+```r
+install.packages("remotes")
+remotes::install_github("chross22/taupatch")
+taupatch::run_taupatch_app()
+```
+
+That opens on synthetic data, so it works before you have Copernicus credentials
+or a station database. To model your own, put its path in the sidebar: the file
+is read where it already is and never copied, a raw NEFSC export is reshaped for
+you, and the columns are checked before a run starts rather than partway through
+one.
+
+Everything is a control rather than a config field — species, life stages,
+threshold, windows, study area, covariates, derived covariates, transforms, model
+type. Press **Download config** and the run you clicked your way to becomes a
+YAML file you can re-run or hand to someone else. The rest of this README is that
+same pipeline driven from a config, for when a run needs scripting or repeating.
+
+Tabs, in the order the questions come up:
+
+- **Config** — the exact YAML the run would use, updating as you click, so
+  nothing done in the GUI is unreachable from a script
+- **Zooplankton data** — the stations before any model touches them: where they
+  are, how abundance moves over the record, its distribution with the patch
+  threshold drawn on. A study area wider than the survey, or an abundance field
+  that is mostly zeros, shows here and nowhere else
+- **Covariate trends** — each covariate's study-area mean by month and year, and
+  a map of the field itself for any month, so a covariate that failed to
+  download or is masked over the wrong water is visible
+- **Results** — cross-validated metrics, variable importance, the threshold used
+- **Diagnostics** — ROC, precision-recall, calibration, and partial effects for
+  every predictor. A GAM also gets its fitted smooths and mgcv's full summary
+- **Maps** — monthly suitability on a basemap, with the probabilities
+  downloadable as GeoTIFFs, a CSV carrying coordinates and dates, or one
+  multi-layer raster
+- **Log** — stage by stage, including how many grid cells each month lost and to
+  which covariate, which is what explains a patchy map
+- **Covariate dictionary** — every covariate's units, resolution, and definition
+
 ## Installation
 
 ```r
@@ -80,15 +125,8 @@ The Shiny app additionally needs `shiny`, `leaflet`, and `shinyFiles`.
 
 ## Try it without any data
 
-The pipeline runs end-to-end on synthetic data, with no Copernicus credentials
-and no network access:
-
-```r
-library(taupatch)
-run_taupatch_app()
-```
-
-Or headless:
+The app above opens on synthetic data. The same run headless, with no Copernicus
+credentials and no network access:
 
 ```r
 config <- load_config(system.file("configs/mock_test.yaml", package = "taupatch"))
@@ -267,7 +305,8 @@ file.copy(system.file("configs", "cfin_gom.yaml", package = "taupatch"),
 ```
 
 **Build it in the app** and download the config it produces, which is the way to
-keep a run you arrived at by clicking.
+keep a run you arrived at by clicking. See [Run it without writing
+code](#run-it-without-writing-code).
 
 Either way, check it before running. `load_config()` applies the defaults and
 validates everything that is cheap to check. That the species resolves, the
@@ -643,40 +682,6 @@ projection:                   # months that get mapped; omit to reuse the above
   years: [2018, 2020]
   months: [1, 12]
 ```
-
-## The app
-
-Point the sidebar at your own station CSV by path. The file is read where it
-already is and never copied, so the config you download afterwards points at the
-real database rather than at a temporary copy. Before a run starts the app checks
-the file against the config's declared columns, and reports which species in the
-catalog resolve to columns actually in the file.
-
-```r
-run_taupatch_app()                              # synthetic data
-run_taupatch_app("inst/configs/cfin_gom.yaml")  # your own config
-```
-
-Pick a species, life stages, threshold, windows, study area, and covariates, then
-run the model. Tabs:
-
-- **Config** — the exact YAML a run would use, so anything done in the GUI is
-  reproducible from a config file
-- **Derived covariates** — picked by the column they produce ("Spatial gradient
-  of SST") rather than by naming a derivoce step. The options depend on what you
-  have selected: current speed appears once both velocity components are in, and
-  a derived covariate whose source you deselect disappears with it. Steps needing
-  a choice with no sensible default (Lyapunov exponents, contours at particular
-  levels, lags of other than one month) stay in the YAML.
-- **Covariates** — every covariate's units, long name, and source dataset; click
-  one for its full definition
-- **Results** — cross-validated metrics, variable importance, threshold used
-- **Maps** — monthly suitability on a leaflet basemap, plus a button to download
-  the whole projection stack as a zip of `<year>-<month>.tiff` files
-- **Covariate trends** — month-by-year heatmap of each covariate's study-area
-  mean, which makes the seasonal cycle read down a column and gaps in the record
-  show up as blank cells
-- **Log** — stage-by-stage output from the run
 
 ### Reading the evaluation
 
