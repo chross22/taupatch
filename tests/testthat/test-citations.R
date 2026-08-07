@@ -116,6 +116,8 @@ test_that("the files it reads are the ones that make citation claims", {
   expect_true("README.md" %in% files)
   expect_true("CITATION" %in% files)
   expect_true("covariate_catalog.R" %in% files)
+  # The vignette links out too, and was missed when it was first added.
+  expect_true(any(grepl("\\.Rmd$", files)))
   # man/ is generated from R/, so including it would report every DOI twice and
   # point at a file nobody edits.
   expect_false(any(grepl("\\.Rd$", files)))

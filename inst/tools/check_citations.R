@@ -36,6 +36,7 @@ source_files <- function(root = ".") {
     file.path(root, "inst", "CITATION"),
     list.files(file.path(root, "docs"), "\\.md$", full.names = TRUE),
     list.files(file.path(root, "R"), "\\.R$", full.names = TRUE),
+    list.files(file.path(root, "vignettes"), "\\.Rmd$", full.names = TRUE),
     list.files(file.path(root, "inst", "shiny"), "\\.R$", full.names = TRUE)
   )
   paths[file.exists(paths)]
