@@ -8,6 +8,23 @@
 \description{
 Builds monthly spatial habitat suitability models for high-abundance patches ("tau-patches") of a zooplankton species, where a patch is defined by a species-specific abundance threshold. Zooplankton station data is matched to Copernicus Marine environmental covariates via the datamatch package, optionally extended with covariates derived from the covariate grid - gradients, fronts, lags, and flow diagnostics - via the derivoce package, classified against the threshold, and modeled with a tidymodels workflow. Fitted models are projected to monthly habitat suitability maps. Species, covariates, thresholds, study area, and model settings are all driven by a YAML config rather than code edits. Rebuilt from the biomod2-based pipeline of Ross et al. (2023).
 }
+\references{
+The model this implements:
+
+Ross CH, Runge JA, Roberts JJ, Brady DC, Tupper B, Record NR (2023).
+Estimating North Atlantic right whale prey based on \emph{Calanus finmarchicus}
+thresholds. \emph{Marine Ecology Progress Series} \strong{703}, 1-16.
+\doi{10.3354/meps14204}
+
+Most of what a run produces comes from someone else's data or someone else's
+method, and the obligation to cite travels with those. Each function's own
+help page carries the references relevant to it — see
+\code{\link[=copernicus_covariates]{copernicus_covariates()}} and \code{\link[=bathymetry_covariates]{bathymetry_covariates()}} for the data sources,
+\code{\link[=derivoce_covariates]{derivoce_covariates()}} for the derived ones, \code{\link[=covariate_transforms]{covariate_transforms()}},
+\code{\link[=model_types]{model_types()}}, and \code{\link[=permutation_importance]{permutation_importance()}} for the methods. The
+README's References section collects all of them in one place, and
+\code{citation("taupatch")} gives this package's own entry.
+}
 \seealso{
 Useful links:
 \itemize{

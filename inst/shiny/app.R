@@ -459,7 +459,24 @@ tabPanel("Config", br(), verbatimTextOutput("config_yaml")),
         tabPanel("Covariate dictionary", br(),
                  p("Every covariate the pipeline can use. Click one for its full",
                    "definition and the dataset it comes from."),
-                 uiOutput("covariate_reference"))
+                 uiOutput("covariate_reference"),
+                 hr(),
+                 # None of this data is ours, and someone publishing from a run
+                 # needs to know whose it is. The dataset is on each entry
+                 # above; this says where the citation for it lives.
+                 p(class = "text-muted",
+                   HTML(paste(
+                     "Covariates come from the Copernicus Marine Service, NOAA",
+                     "ETOPO, and the climate index providers named above, and",
+                     "the derived ones implement published methods.",
+                     "<b>Cite the sources a run actually used.</b>",
+                     "The full reference list is at",
+                     "<a href='https://github.com/chross22/taupatch#references'",
+                     "target='_blank' rel='noopener'>the bottom of the README",
+                     "</a>, and <code>?copernicus_covariates</code>,",
+                     "<code>?bathymetry_covariates</code> and",
+                     "<code>?derivoce_covariates</code> carry them in R."
+                   ))))
       )
     )
   )

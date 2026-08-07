@@ -21,3 +21,13 @@ should join up at the end of December rather than being free to jump.
 \examples{
 gam_bases()
 }
+\references{
+Marra G, Wood SN (2011). Practical variable selection for generalized
+additive models. \emph{Computational Statistics & Data Analysis} \strong{55}(7),
+2372-2387. \doi{10.1016/j.csda.2011.02.004} — the shrinkage penalty behind
+\code{ts}, and behind \code{select_features}
+
+Wood SN (2017). \emph{Generalized Additive Models: An Introduction with R}, 2nd
+edition. Chapman and Hall/CRC. \doi{10.1201/9781315370279} — every basis
+listed here
+}

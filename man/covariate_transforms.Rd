@@ -41,3 +41,16 @@ makes it the one estimated option that suits a signed covariate.
 names(covariate_transforms())
 covariate_transforms()$log1p$description
 }
+\references{
+Box GEP, Cox DR (1964). An analysis of transformations. \emph{Journal of the Royal
+Statistical Society: Series B} \strong{26}(2), 211-252.
+\doi{10.1111/j.2517-6161.1964.tb00553.x} — \code{boxcox}
+
+Yeo I-K, Johnson RA (2000). A new family of power transformations to improve
+normality or symmetry. \emph{Biometrika} \strong{87}(4), 954-959.
+\doi{10.1093/biomet/87.4.954} — \code{yeojohnson}
+
+Field JG, Clarke KR, Warwick RM (1982). A practical strategy for analysing
+multispecies distribution patterns. \emph{Marine Ecology Progress Series} \strong{8},
+37-52. \doi{10.3354/meps008037} — the fourth root as the plankton standard
+}

@@ -1,0 +1,98 @@
+# Checks that every DOI and link in the docs still resolves.
+#
+# References go stale quietly: a dataset DOI is superseded, a documentation page
+# moves, a typo was always there and nobody clicked it. Nothing about a normal
+# commit would surface that, so this runs on a schedule as well as on changes to
+# the files that make citation claims.
+#
+# A scheduled failure opens an issue, because a cron job that only turns a badge
+# red is a cron job nobody looks at.
+name: Citations
+
+on:
+  schedule:
+    # 06:00 UTC on the first of the month.
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+  push:
+    branches: [master, main]
+    paths:
+      - 'README.md'
+      - 'docs/**'
+      - 'R/**'
+      - 'inst/CITATION'
+      - 'inst/shiny/**'
+      - 'inst/tools/check_citations.R'
+      - '.github/workflows/citations.yaml'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'docs/**'
+      - 'R/**'
+      - 'inst/CITATION'
+      - 'inst/shiny/**'
+      - 'inst/tools/check_citations.R'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-citations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      # Base R and curl are all the script needs, so there is nothing to install
+      # and nothing to cache.
+      - name: Check every DOI and link
+        id: check
+        run: |
+          set -o pipefail
+          Rscript inst/tools/check_citations.R 2>&1 | tee citation-report.txt
+
+      # Written whether the step above passed or failed, so a green run still
+      # shows which references were checked.
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo '## Citation check'
+            echo
+            echo '```'
+            cat citation-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open an issue if a scheduled run found a dead reference
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # gh refuses to apply a label that does not exist yet, and this is the
+          # first thing that would ever use it.
+          gh label create citations \
+            --description "A reference in the docs no longer resolves" \
+            --color D4C5F9 2>/dev/null || true
+
+          # One issue, commented on, rather than a new one every month.
+          existing=$(gh issue list --state open --label citations \
+            --search "Dead citation in the docs in:title" \
+            --json number --jq '.[0].number')
+
+          body=$(printf '%s\n\n```\n%s\n```\n' \
+            "The monthly citation check found a reference that no longer resolves. Each line names the file it is in; fix it there and in the README's References section." \
+            "$(cat citation-report.txt)")
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create \
+              --title "Dead citation in the docs" \
+              --label citations \
+              --body "$body"
+          fi

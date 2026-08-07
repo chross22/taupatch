@@ -17,6 +17,22 @@
 #' @examples
 #' names(copernicus_covariates())
 #' copernicus_covariates()$SST$units
+#' @references
+#' Three Copernicus Marine products supply these, and a run should cite whichever
+#' of them it fetched from. E.U. Copernicus Marine Service Information:
+#'
+#' *Global Ocean Physics Reanalysis* (GLORYS12V1) — `SST`, `SSS`, `BOTT`, `UO`,
+#' `VO`, `SSH`, `MLD`, `SIC`. \doi{10.48670/moi-00021}
+#'
+#' *Global Ocean Colour* (Copernicus-GlobColour) — satellite `CHL`, `PP`,
+#' `DIATO`, `DINO`. \doi{10.48670/moi-00281}
+#'
+#' *Global Ocean Biogeochemistry Hindcast* — `NO3`, `PO4`, `O2`, `PH`,
+#' `CHL_MODEL`, `NPP_MODEL`. \doi{10.48670/moi-00019}
+#'
+#' Downloads go through the Copernicus Marine Toolbox
+#' (<https://toolbox-docs.marine.copernicus.eu/>), which has no DOI of its own —
+#' credit it by name, and cite the product.
 #' @seealso [datamatch::variable_dictionary()] for the full variable listing
 #' @export
 copernicus_covariates <- function() {
@@ -201,6 +217,11 @@ resolve_covariate_specs <- function(selected) {
 #'   `description`
 #' @examples
 #' names(climate_index_covariates())
+#' @references
+#' Each index is somebody's published product, and the `source` field names
+#' whose. `datamatch::index_dictionary()` carries the citation for each one at
+#' runtime; two of them (`LCR`, `AMOC`) are the output of specific papers and
+#' should be cited when used. See datamatch's README for the list.
 #' @export
 climate_index_covariates <- function() {
   datamatch::climate_indices()

@@ -16,6 +16,36 @@
 #' names(model_types())
 #' model_types()$gam$description
 #' vapply(model_types(), function(m) m$engine, character(1))
+#' @references
+#' Breiman L (2001). Random forests. *Machine Learning* **45**(1), 5-32.
+#' \doi{10.1023/A:1010933404324} — `rf`
+#'
+#' Wright MN, Ziegler A (2017). ranger: a fast implementation of random forests
+#' for high dimensional data in C++ and R. *Journal of Statistical Software*
+#' **77**(1), 1-17. \doi{10.18637/jss.v077.i01} — the `rf` engine
+#'
+#' Friedman JH (2001). Greedy function approximation: a gradient boosting
+#' machine. *Annals of Statistics* **29**(5), 1189-1232.
+#' \doi{10.1214/aos/1013203451} — `brt`
+#'
+#' Elith J, Leathwick JR, Hastie T (2008). A working guide to boosted regression
+#' trees. *Journal of Animal Ecology* **77**(4), 802-813.
+#' \doi{10.1111/j.1365-2656.2008.01390.x}
+#'
+#' Chen T, Guestrin C (2016). XGBoost: a scalable tree boosting system.
+#' *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge
+#' Discovery and Data Mining*, 785-794. \doi{10.1145/2939672.2939785} — the
+#' `brt` engine
+#'
+#' McCullagh P, Nelder JA (1989). *Generalized Linear Models*, 2nd edition.
+#' Chapman and Hall. \doi{10.1007/978-1-4899-3242-6} — `glm`
+#'
+#' Hastie T, Tibshirani R (1986). Generalized additive models. *Statistical
+#' Science* **1**(3), 297-310. \doi{10.1214/ss/1177013604} — `gam`
+#'
+#' Wood SN (2017). *Generalized Additive Models: An Introduction with R*, 2nd
+#' edition. Chapman and Hall/CRC. \doi{10.1201/9781315370279} — the `mgcv`
+#' reference
 #' @seealso [build_model_spec()], which turns a config into a fitted-ready spec
 #' @export
 model_types <- function() {
@@ -205,6 +235,11 @@ check_model_packages <- function(type) {
 #' @return character vector of method names
 #' @examples
 #' gam_methods()
+#' @references
+#' Wood SN (2011). Fast stable restricted maximum likelihood and marginal
+#' likelihood estimation of semiparametric generalized linear models. *Journal
+#' of the Royal Statistical Society: Series B* **73**(1), 3-36.
+#' \doi{10.1111/j.1467-9868.2010.00749.x}
 #' @export
 gam_methods <- function() c("GCV.Cp", "REML", "ML", "P-REML", "P-ML")
 
@@ -221,6 +256,15 @@ gam_methods <- function() c("GCV.Cp", "REML", "ML", "P-REML", "P-ML")
 #' @return character vector of basis codes
 #' @examples
 #' gam_bases()
+#' @references
+#' Marra G, Wood SN (2011). Practical variable selection for generalized
+#' additive models. *Computational Statistics & Data Analysis* **55**(7),
+#' 2372-2387. \doi{10.1016/j.csda.2011.02.004} — the shrinkage penalty behind
+#' `ts`, and behind `select_features`
+#'
+#' Wood SN (2017). *Generalized Additive Models: An Introduction with R*, 2nd
+#' edition. Chapman and Hall/CRC. \doi{10.1201/9781315370279} — every basis
+#' listed here
 #' @export
 gam_bases <- function() c("tp", "ts", "cr", "cc", "ps", "ds", "gp")
 
@@ -316,6 +360,16 @@ model_formula <- function(type, model_data, predictors, config = NULL) {
 #' @param predictors predictor column names
 #' @param times how many shuffles to average over
 #' @return a tibble of `variable` and `importance`, most important first
+#' @references
+#' Breiman L (2001). Random forests. *Machine Learning* **45**(1), 5-32.
+#' \doi{10.1023/A:1010933404324} — where permutation importance comes from
+#'
+#' Fisher A, Rudin C, Dominici F (2019). All models are wrong, but many are
+#' useful: learning a variable's importance by studying an entire class of
+#' prediction models simultaneously. *Journal of Machine Learning Research*
+#' **20**(177), 1-81. <https://jmlr.org/papers/v20/18-760.html> — permutation
+#' importance as a model-agnostic quantity, which is what makes one definition
+#' across four model types meaningful
 #' @keywords internal
 permutation_importance <- function(fitted, model_data, predictors, times = 5) {
   auc <- function(data) {

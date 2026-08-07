@@ -35,4 +35,15 @@ Measured on the training data, since the fitted workflow is what is being
 interrogated. That inflates the absolute values for a model that overfits, but
 the ranking — which is what the plot is read for — holds up.
 }
+\references{
+Breiman L (2001). Random forests. \emph{Machine Learning} \strong{45}(1), 5-32.
+\doi{10.1023/A:1010933404324} — where permutation importance comes from
+
+Fisher A, Rudin C, Dominici F (2019). All models are wrong, but many are
+useful: learning a variable's importance by studying an entire class of
+prediction models simultaneously. \emph{Journal of Machine Learning Research}
+\strong{20}(177), 1-81. \url{https://jmlr.org/papers/v20/18-760.html} — permutation
+importance as a model-agnostic quantity, which is what makes one definition
+across four model types meaningful
+}
 \keyword{internal}

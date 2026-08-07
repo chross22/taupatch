@@ -451,6 +451,15 @@ warn_ambiguous_taxa <- function(taxa, stage_pattern) {
 #'   CENTROPAGES_TYPICUS_CV_10M2 = c(12, 40)
 #' )
 #' format_zoop_data(raw)
+#' @references
+#' The export this reshapes is NOAA's Ecosystem Monitoring plankton dataset. It
+#' is not distributed with this package and carries its own citation:
+#'
+#' NOAA National Marine Fisheries Service, Northeast Fisheries Science Center.
+#' *Zooplankton and ichthyoplankton abundance and distribution in the North
+#' Atlantic collected by the Ecosystem Monitoring (EcoMon) Project*. NOAA
+#' National Centers for Environmental Information, NCEI Accession 0187513.
+#' <https://www.ncei.noaa.gov/archive/accession/0187513>
 #' @seealso [split_dates()], [zoop_taxa()], [species_catalog_from()]
 #' @export
 format_zoop_data <- function(path, suffix = "_10M2",

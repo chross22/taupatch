@@ -33,6 +33,11 @@
 #' \dontrun{
 #' effects <- partial_effects(model$workflow, model$model_data, model$predictors)
 #' }
+#' @references
+#' Friedman JH (2001). Greedy function approximation: a gradient boosting
+#' machine. *Annals of Statistics* **29**(5), 1189-1232.
+#' \doi{10.1214/aos/1013203451} — where partial dependence comes from, section
+#' 8.2
 #' @seealso [plot_partial_effects()]
 #' @export
 partial_effects <- function(fitted, model_data, predictors, grid_size = 20,

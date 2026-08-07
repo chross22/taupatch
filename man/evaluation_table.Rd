@@ -31,4 +31,20 @@ threshold-dependent ones twice: at 0.5, and at the cutoff that maximises TSS.
 Threshold-free metrics carry \code{NA} in that column, which is the honest entry —
 they do not have one.
 }
+\references{
+Allouche O, Tsoar A, Kadmon R (2006). Assessing the accuracy of species
+distribution models: prevalence, kappa and the true skill statistic (TSS).
+\emph{Journal of Applied Ecology} \strong{43}(6), 1223-1232.
+\doi{10.1111/j.1365-2664.2006.01214.x} — \code{tss}
+
+Saito T, Rehmsmeier M (2015). The precision-recall plot is more informative
+than the ROC plot when evaluating binary classifiers on imbalanced datasets.
+\emph{PLoS ONE} \strong{10}(3), e0118432. \doi{10.1371/journal.pone.0118432} — \code{pr_auc}
+
+Sofaer HR, Hoeting JA, Jarnevich CS (2019). The area under the
+precision-recall curve as a performance metric for rare binary events.
+\emph{Methods in Ecology and Evolution} \strong{10}(4), 565-577.
+\doi{10.1111/2041-210X.13140} — the same argument for rare events in species
+distribution models, which is what a patch is
+}
 \keyword{internal}

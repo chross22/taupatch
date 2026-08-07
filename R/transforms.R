@@ -29,6 +29,18 @@
 #' @examples
 #' names(covariate_transforms())
 #' covariate_transforms()$log1p$description
+#' @references
+#' Box GEP, Cox DR (1964). An analysis of transformations. *Journal of the Royal
+#' Statistical Society: Series B* **26**(2), 211-252.
+#' \doi{10.1111/j.2517-6161.1964.tb00553.x} — `boxcox`
+#'
+#' Yeo I-K, Johnson RA (2000). A new family of power transformations to improve
+#' normality or symmetry. *Biometrika* **87**(4), 954-959.
+#' \doi{10.1093/biomet/87.4.954} — `yeojohnson`
+#'
+#' Field JG, Clarke KR, Warwick RM (1982). A practical strategy for analysing
+#' multispecies distribution patterns. *Marine Ecology Progress Series* **8**,
+#' 37-52. \doi{10.3354/meps008037} — the fourth root as the plankton standard
 #' @export
 covariate_transforms <- function() {
   list(

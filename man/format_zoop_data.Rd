@@ -88,6 +88,16 @@ raw <- data.frame(
 )
 format_zoop_data(raw)
 }
+\references{
+The export this reshapes is NOAA's Ecosystem Monitoring plankton dataset. It
+is not distributed with this package and carries its own citation:
+
+NOAA National Marine Fisheries Service, Northeast Fisheries Science Center.
+\emph{Zooplankton and ichthyoplankton abundance and distribution in the North
+Atlantic collected by the Ecosystem Monitoring (EcoMon) Project}. NOAA
+National Centers for Environmental Information, NCEI Accession 0187513.
+\url{https://www.ncei.noaa.gov/archive/accession/0187513}
+}
 \seealso{
 \code{\link[=split_dates]{split_dates()}}, \code{\link[=zoop_taxa]{zoop_taxa()}}, \code{\link[=species_catalog_from]{species_catalog_from()}}
 }

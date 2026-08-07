@@ -24,3 +24,15 @@ high-abundance patch. Replaces the \code{biomod2} model in
 of biomod2's \code{CV.nb.rep}/\code{data.split.perc}, and a \code{workflows::workflow()} object
 instead of biomod2's on-disk model directory and string-pasted run names.
 }
+\references{
+Kuhn M, Wickham H (2020). \emph{Tidymodels: a collection of packages for modeling
+and machine learning using tidyverse principles}.
+\url{https://www.tidymodels.org}
+
+Thuiller W, Lafourcade B, Engler R, Araújo MB (2009). BIOMOD - a platform for
+ensemble forecasting of species distributions. \emph{Ecography} \strong{32}(3),
+369-373. \doi{10.1111/j.1600-0587.2008.05742.x} — what this replaces
+
+See \code{\link[=model_types]{model_types()}} for the reference behind each model, and
+\code{\link[=evaluation_table]{evaluation_table()}} for the metrics.
+}

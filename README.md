@@ -27,6 +27,7 @@
 - [Outputs](#outputs)
 - [Repository layout](#repository-layout)
 - [Citation](#citation)
+- [References](#references)
 
 </details>
 
@@ -40,17 +41,25 @@ Station data is matched to Copernicus Marine environmental covariates with
 derived from that grid with [`derivoce`](https://github.com/chross22/derivoce):
 gradients, fronts, lags, and flow diagnostics. Stations are then classified
 against the abundance threshold and modeled with a
-[tidymodels](https://www.tidymodels.org) workflow. The fitted model is projected
-to a habitat suitability map for every month you configure.
+[tidymodels](https://www.tidymodels.org) workflow (Kuhn & Wickham 2020). The
+fitted model is projected to a habitat suitability map for every month you
+configure — a presence/absence species distribution model in the sense of Elith
+& Leathwick (2009), where "presence" is a patch rather than an animal.
 
 This is the model from [Ross et al.
 (2023)](https://doi.org/10.3354/meps14204), *Estimating North Atlantic right
 whale prey based on* Calanus finmarchicus *thresholds*, rebuilt as an R package.
-The original `biomod2` pipeline is kept unmodified in [`original/`](original/).
+The original `biomod2` pipeline (Thuiller et al. 2009) is kept unmodified in
+[`original/`](original/).
 
 Species, life stages, covariates, thresholds, study area, and model settings all
 come from a YAML config now, rather than from editing code. See
 [`docs/rebuild_plan.md`](docs/rebuild_plan.md) for what changed and why.
+
+Every work cited below is listed under [References](#references) at the very
+bottom, and each function's own `?help` carries the references relevant to it.
+**If you publish from a run, cite the data and methods that run actually used**
+— the reference list is grouped so you can pick out exactly those.
 
 ## Run it without writing code
 
@@ -106,7 +115,8 @@ remotes::install_github("chross22/taupatch")
 
 Environmental data needs the [Copernicus Marine
 Toolbox](https://help.marine.copernicus.eu/en/collections/4060068-copernicus-marine-toolbox)
-installed and configured with your Copernicus credentials, plus:
+(EU Copernicus Marine Service 2025) installed and configured with your Copernicus
+credentials, plus:
 
 ```r
 remotes::install_github("chross22/datamatch")
@@ -147,7 +157,9 @@ chance. A smoke test that passed on noise would not be testing anything.
 ## Running on real data
 
 If you have the raw ECOMON export rather than a formatted database, build one
-first:
+first. That export is NOAA's Ecosystem Monitoring plankton dataset (NOAA NEFSC,
+NCEI Accession 0187513), which is not distributed with this package and carries
+its own citation:
 
 ```r
 formatted <- format_zoop_data("raw_ecomon.csv", write_to = "data/zooplankton.csv")
@@ -412,13 +424,21 @@ covariate_info()[, c("name", "label", "units")]
 | DEPTH / SLOPE / ASPECT | Seafloor depth, slope, aspect (static) | m, degrees |
 | jday | Day of year (derived) | day (1–366) |
 
+These come from three Copernicus Marine products, each of which should be cited
+when a run uses it: the **Global Ocean Physics Reanalysis** (GLORYS12V1) for
+`SST`, `SSS`, `BOTT`, `UO`, `VO`, `SSH`, `MLD`; the **Global Ocean Colour**
+(Copernicus-GlobColour) satellite product for `CHL`, `PP`; and the **Global Ocean
+Biogeochemistry Hindcast** for `NO3`, `O2`, `CHL_MODEL`. `covariate_info()` names
+the dataset behind each covariate, and the [References](#references) give the
+product DOIs.
+
 `jday` is what lets one pooled model produce month-specific maps instead of
 requiring twelve separate models.
 
 **Seafloor covariates are static** — they don't vary by month, so they're
-downloaded once from NOAA ETOPO via `marmap::getNOAA.bathy()` and attached to
-every time step. They go under their own config key, since they don't come from
-Copernicus:
+downloaded once from NOAA ETOPO 2022 (NOAA NCEI 2022) via
+`marmap::getNOAA.bathy()` (Pante & Simon-Bouhet 2013) and attached to every time
+step. They go under their own config key, since they don't come from Copernicus:
 
 ```yaml
 covariates:
@@ -465,6 +485,14 @@ Steps run in order and see the columns earlier ones produced. That is why
 too. `derivoce_covariates()` lists every step type with its units and the column
 names it produces.
 
+Each of these implements a published method, and the citation belongs to that
+method rather than to this package: front detection follows Belkin & O'Reilly
+(2009), the Lyapunov exponents follow Haller (2015) and d'Ovidio et al. (2004),
+and `distance_to_shore` measures against [Natural
+Earth](https://www.naturalearthdata.com/) coastlines. derivoce's own
+[reference list](https://github.com/chross22/derivoce#references) is the complete
+one, and `?derivoce::ftle` and friends carry the reference for each function.
+
 These are computed **on the covariate grid, before stations are matched to it**.
 A gradient or a front is a property of the field, and scattered station points
 cannot recover one. After that they behave like any other covariate column. They
@@ -498,9 +526,9 @@ covariates:
 |---|---|
 | `log1p` | `log(1 + \|x\|)`. Defined at zero, which the plain logs are not |
 | `log` / `log10` | Natural and base-10 log of the magnitude |
-| `sqrt` / `fourth_root` | Milder compression, defined at zero; fourth root is the plankton standard |
-| `boxcox` | Estimates the best power per covariate; needs strictly positive input |
-| `yeojohnson` | Box-Cox extended to zero and negative values |
+| `sqrt` / `fourth_root` | Milder compression, defined at zero; fourth root is the plankton standard, after Field et al. (1982) |
+| `boxcox` | Estimates the best power per covariate (Box & Cox 1964); needs strictly positive input |
+| `yeojohnson` | Box-Cox extended to zero and negative values (Yeo & Johnson 2000) |
 
 Two rules the package checks against the data rather than trusting:
 
@@ -605,12 +633,12 @@ model:
   tune: false
 ```
 
-| `type` | Model | Engine |
-|---|---|---|
-| `rf` | Random forest | `ranger` |
-| `brt` | Boosted regression trees | `xgboost` |
-| `glm` | Logistic regression | `stats::glm` |
-| `gam` | Generalized additive model | `mgcv` |
+| `type` | Model | Engine | Method |
+|---|---|---|---|
+| `rf` | Random forest | `ranger` (Wright & Ziegler 2017) | Breiman (2001) |
+| `brt` | Boosted regression trees | `xgboost` (Chen & Guestrin 2016) | Friedman (2001); Elith et al. (2008) |
+| `glm` | Logistic regression | `stats::glm` | McCullagh & Nelder (1989) |
+| `gam` | Generalized additive model | `mgcv` (Wood 2011, 2017) | Hastie & Tibshirani (1986) |
 
 They are worth running against each other rather than picking one. If the GLM and
 the forest rank the same stations, the relationships are close to monotonic and
@@ -620,16 +648,20 @@ between, and it is the one that can tell you which. Each of its terms is a curve
 you can plot, which a forest cannot give you.
 
 `trees` applies to `rf` and `brt`. `brt` also takes `learn_rate` and
-`tree_depth`, and `gam` takes `select_features`. `model.tune` searches the
-hyperparameters a type actually has. A GLM has none, so asking to tune one is an
-error rather than a silent no-op. `model_types()` describes each.
+`tree_depth`, and `gam` takes `select_features`, which adds the extra shrinkage
+penalty of Marra & Wood (2011) so a term that earns nothing is removed rather
+than left wiggling — the `bs: ts` basis is the per-smooth version of the same
+idea. `model.method` picks how the smoothing parameters are estimated; `REML`
+(Wood 2011) resists the undersmoothing that GCV is prone to. `model.tune`
+searches the hyperparameters a type actually has. A GLM has none, so asking to
+tune one is an error rather than a silent no-op. `model_types()` describes each.
 
-**Diagnostics follow the model.** Every type gets partial effect curves. These
-show what each predictor *does* to patch probability, with the others held at the
-values they actually take. Importance says a predictor matters. This says which
-way, and where it bends. It is computed by prediction rather than read off the
-fitted object, so the curves mean the same thing for all four types and can be
-laid against each other.
+**Diagnostics follow the model.** Every type gets partial effect curves — partial
+dependence in the sense of Friedman (2001). These show what each predictor *does*
+to patch probability, with the others held at the values they actually take.
+Importance says a predictor matters. This says which way, and where it bends. It
+is computed by prediction rather than read off the fitted object, so the curves
+mean the same thing for all four types and can be laid against each other.
 
 On top of that, each model contributes what only it can:
 
@@ -659,8 +691,9 @@ app's Diagnostics tab. `model_engine_fit()` returns the underlying `ranger`,
 model directly.
 
 **Variable importance is computed the same way for all four.** It is the drop in
-ROC AUC when a predictor is shuffled, averaged over several shuffles.
-Engine-reported importances are not comparable: ranger's permutation drop and
+ROC AUC when a predictor is shuffled, averaged over several shuffles — the
+permutation importance of Breiman (2001), in the model-agnostic form of Fisher et
+al. (2019). Engine-reported importances are not comparable: ranger's permutation drop and
 xgboost's split gain are different quantities on different scales, and a GLM and
 GAM have none at all. One definition is what makes comparing the four meaningful.
 It is measured on the training data, so it flatters a model that overfits in
@@ -699,6 +732,10 @@ a lot with it:
 | spec | 0.074 | 0.767 |
 | tss | 0.074 | 0.637 |
 
+`tss` is the true skill statistic, `sens + spec - 1`, which is the accuracy
+measure Allouche et al. (2006) recommend for presence/absence models because,
+unlike kappa, it does not vary with prevalence.
+
 Two things this makes visible that a single-column table hides:
 
 - **0.5 is the wrong cutoff here.** With only a tenth of stations patches, a
@@ -711,7 +748,9 @@ Two things this makes visible that a single-column table hides:
   0.433. ROC's false-positive rate has the large non-patch class in its
   denominator. Precision is the question a patch map actually poses, and the
   trade-off is real. Moving to the optimal cutoff raises sensitivity to 0.87 but
-  drops precision to 0.30.
+  drops precision to 0.30. This is the argument of Saito & Rehmsmeier (2015), and
+  of Sofaer et al. (2019) for rare events in species distribution models
+  specifically — which is exactly what a patch is.
 
 `diagnostics/` holds the curves these come from, and `cv_predictions.csv` the
 held-out predictions, so any metric not tabulated here can be computed without
@@ -790,3 +829,202 @@ The paper this model comes from:
   doi     = {10.3354/meps14204}
 }
 ```
+
+`citation("taupatch")` returns this entry along with one for the software itself.
+Cite the paper for the method and the package for the implementation, and see
+[References](#references) below for the data and methods a particular run leans on.
+
+## References
+
+taupatch is mostly plumbing between other people's data and other people's
+methods, and the obligation to cite travels with those rather than with this
+package. **Cite whichever of these your run actually used** — the groupings below
+are meant to make that easy to work out. Each function's own `?help` carries the
+references relevant to it, and `covariate_info()` names the source of every
+covariate at runtime.
+
+### The model this implements
+
+- Ross CH, Runge JA, Roberts JJ, Brady DC, Tupper B, Record NR (2023). Estimating
+  North Atlantic right whale prey based on *Calanus finmarchicus* thresholds.
+  *Marine Ecology Progress Series* **703**, 1–16.
+  [doi:10.3354/meps14204](https://doi.org/10.3354/meps14204)
+- Elith J, Leathwick JR (2009). Species distribution models: ecological
+  explanation and prediction across space and time. *Annual Review of Ecology,
+  Evolution, and Systematics* **40**, 677–697.
+  [doi:10.1146/annurev.ecolsys.110308.120159](https://doi.org/10.1146/annurev.ecolsys.110308.120159)
+- Thuiller W, Lafourcade B, Engler R, Araújo MB (2009). BIOMOD – a platform for
+  ensemble forecasting of species distributions. *Ecography* **32**(3), 369–373.
+  [doi:10.1111/j.1600-0587.2008.05742.x](https://doi.org/10.1111/j.1600-0587.2008.05742.x)
+  — the framework the archived `original/` pipeline was built on, replaced here by
+  tidymodels
+
+### Station data
+
+Not distributed with this package. A run on the NOAA export should cite it:
+
+- NOAA National Marine Fisheries Service, Northeast Fisheries Science Center.
+  *Zooplankton and ichthyoplankton abundance and distribution in the North
+  Atlantic collected by the Ecosystem Monitoring (EcoMon) Project*. NOAA National
+  Centers for Environmental Information, NCEI Accession 0187513.
+  <https://www.ncei.noaa.gov/archive/accession/0187513>
+
+### Environmental covariates
+
+Fetched through [datamatch](https://github.com/chross22/datamatch), whose
+[reference list](https://github.com/chross22/datamatch#references) is the complete
+one for the data sources. The three products this package's catalog draws on:
+
+- **Global Ocean Physics Reanalysis** (GLORYS12V1) — `SST`, `SSS`, `BOTT`, `UO`,
+  `VO`, `SSH`, `MLD`, `SIC`. E.U. Copernicus Marine Service Information.
+  [doi:10.48670/moi-00021](https://doi.org/10.48670/moi-00021)
+- **Global Ocean Colour** (Copernicus-GlobColour) — satellite `CHL`, `PP`,
+  `DIATO`, `DINO`. E.U. Copernicus Marine Service Information.
+  [doi:10.48670/moi-00281](https://doi.org/10.48670/moi-00281)
+- **Global Ocean Biogeochemistry Hindcast** — `NO3`, `PO4`, `O2`, `PH`,
+  `CHL_MODEL`, `NPP_MODEL`. E.U. Copernicus Marine Service Information.
+  [doi:10.48670/moi-00019](https://doi.org/10.48670/moi-00019)
+- E.U. Copernicus Marine Service. *Copernicus Marine Toolbox*
+  (`copernicusmarine`). <https://toolbox-docs.marine.copernicus.eu/> — how the
+  above are downloaded. Mercator Ocean International publishes no DOI for the
+  toolbox itself, so credit it by name; the citation that matters is the
+  product's.
+
+Seafloor terrain, for `covariates.bathymetry`:
+
+- NOAA National Centers for Environmental Information (2022). *ETOPO 2022
+  15 Arc-Second Global Relief Model*.
+  [doi:10.25921/fd45-gt74](https://doi.org/10.25921/fd45-gt74)
+- Pante E, Simon-Bouhet B (2013). marmap: A package for importing, plotting and
+  analyzing bathymetric and topographic data in R. *PLoS ONE* **8**(9), e73051.
+  [doi:10.1371/journal.pone.0073051](https://doi.org/10.1371/journal.pone.0073051)
+
+Climate indices, when `covariates.climate` is set, come from
+[datamatch](https://github.com/chross22/datamatch#climate-indices); two of the six
+(`LCR`, `AMOC`) are the published output of specific work and are cited there.
+
+### Derived covariates
+
+Computed by [derivoce](https://github.com/chross22/derivoce), whose
+[reference list](https://github.com/chross22/derivoce#references) is the complete
+one. The methods behind the steps this README shows:
+
+- Belkin IM, O'Reilly JE (2009). An algorithm for oceanic front detection in
+  chlorophyll and SST satellite imagery. *Journal of Marine Systems* **78**(3),
+  319–326.
+  [doi:10.1016/j.jmarsys.2008.11.018](https://doi.org/10.1016/j.jmarsys.2008.11.018)
+  — `distance_to_front`
+- d'Ovidio F, Fernández V, Hernández-García E, López C (2004). Mixing structures
+  in the Mediterranean Sea from finite-size Lyapunov exponents. *Geophysical
+  Research Letters* **31**(17).
+  [doi:10.1029/2004GL020328](https://doi.org/10.1029/2004GL020328) — `fsle`
+- Haller G (2015). Lagrangian coherent structures. *Annual Review of Fluid
+  Mechanics* **47**, 137–162.
+  [doi:10.1146/annurev-fluid-010313-141322](https://doi.org/10.1146/annurev-fluid-010313-141322)
+  — `ftle`, `fsle`
+
+Coastlines for `distance_to_shore` are [Natural
+Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
+
+### Transformations
+
+- Box GEP, Cox DR (1964). An analysis of transformations. *Journal of the Royal
+  Statistical Society: Series B* **26**(2), 211–252.
+  [doi:10.1111/j.2517-6161.1964.tb00553.x](https://doi.org/10.1111/j.2517-6161.1964.tb00553.x)
+  — `boxcox`
+- Field JG, Clarke KR, Warwick RM (1982). A practical strategy for analysing
+  multispecies distribution patterns. *Marine Ecology Progress Series* **8**,
+  37–52. [doi:10.3354/meps008037](https://doi.org/10.3354/meps008037) — the fourth
+  root as the plankton standard
+- Yeo I-K, Johnson RA (2000). A new family of power transformations to improve
+  normality or symmetry. *Biometrika* **87**(4), 954–959.
+  [doi:10.1093/biomet/87.4.954](https://doi.org/10.1093/biomet/87.4.954) —
+  `yeojohnson`
+
+### Models
+
+- Breiman L (2001). Random forests. *Machine Learning* **45**(1), 5–32.
+  [doi:10.1023/A:1010933404324](https://doi.org/10.1023/A:1010933404324) — `rf`,
+  and the origin of permutation importance
+- Chen T, Guestrin C (2016). XGBoost: a scalable tree boosting system.
+  *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge
+  Discovery and Data Mining*, 785–794.
+  [doi:10.1145/2939672.2939785](https://doi.org/10.1145/2939672.2939785) — the
+  `brt` engine
+- Elith J, Leathwick JR, Hastie T (2008). A working guide to boosted regression
+  trees. *Journal of Animal Ecology* **77**(4), 802–813.
+  [doi:10.1111/j.1365-2656.2008.01390.x](https://doi.org/10.1111/j.1365-2656.2008.01390.x)
+- Friedman JH (2001). Greedy function approximation: a gradient boosting machine.
+  *Annals of Statistics* **29**(5), 1189–1232.
+  [doi:10.1214/aos/1013203451](https://doi.org/10.1214/aos/1013203451) — `brt`, and
+  the partial dependence plot
+- Hastie T, Tibshirani R (1986). Generalized additive models. *Statistical
+  Science* **1**(3), 297–310.
+  [doi:10.1214/ss/1177013604](https://doi.org/10.1214/ss/1177013604) — `gam`
+- Marra G, Wood SN (2011). Practical variable selection for generalized additive
+  models. *Computational Statistics & Data Analysis* **55**(7), 2372–2387.
+  [doi:10.1016/j.csda.2011.02.004](https://doi.org/10.1016/j.csda.2011.02.004) —
+  `select_features` and the `ts` basis
+- McCullagh P, Nelder JA (1989). *Generalized Linear Models*, 2nd edition. Chapman
+  and Hall. [doi:10.1007/978-1-4899-3242-6](https://doi.org/10.1007/978-1-4899-3242-6)
+  — `glm`
+- Wood SN (2011). Fast stable restricted maximum likelihood and marginal
+  likelihood estimation of semiparametric generalized linear models. *Journal of
+  the Royal Statistical Society: Series B* **73**(1), 3–36.
+  [doi:10.1111/j.1467-9868.2010.00749.x](https://doi.org/10.1111/j.1467-9868.2010.00749.x)
+  — `model.method`
+- Wood SN (2017). *Generalized Additive Models: An Introduction with R*, 2nd
+  edition. Chapman and Hall/CRC.
+  [doi:10.1201/9781315370279](https://doi.org/10.1201/9781315370279) — the `mgcv`
+  reference
+- Wright MN, Ziegler A (2017). ranger: a fast implementation of random forests for
+  high dimensional data in C++ and R. *Journal of Statistical Software* **77**(1),
+  1–17. [doi:10.18637/jss.v077.i01](https://doi.org/10.18637/jss.v077.i01) — the
+  `rf` engine
+
+### Evaluation and diagnostics
+
+- Allouche O, Tsoar A, Kadmon R (2006). Assessing the accuracy of species
+  distribution models: prevalence, kappa and the true skill statistic (TSS).
+  *Journal of Applied Ecology* **43**(6), 1223–1232.
+  [doi:10.1111/j.1365-2664.2006.01214.x](https://doi.org/10.1111/j.1365-2664.2006.01214.x)
+  — `tss`, and the cutoff that maximises it
+- Fisher A, Rudin C, Dominici F (2019). All models are wrong, but many are useful:
+  learning a variable's importance by studying an entire class of prediction
+  models simultaneously. *Journal of Machine Learning Research* **20**(177), 1–81.
+  <https://jmlr.org/papers/v20/18-760.html> — permutation importance as a
+  model-agnostic quantity, which is what makes it comparable across the four types
+- Saito T, Rehmsmeier M (2015). The precision-recall plot is more informative than
+  the ROC plot when evaluating binary classifiers on imbalanced datasets. *PLoS
+  ONE* **10**(3), e0118432.
+  [doi:10.1371/journal.pone.0118432](https://doi.org/10.1371/journal.pone.0118432)
+  — `pr_auc`
+- Sofaer HR, Hoeting JA, Jarnevich CS (2019). The area under the precision-recall
+  curve as a performance metric for rare binary events. *Methods in Ecology and
+  Evolution* **10**(4), 565–577.
+  [doi:10.1111/2041-210X.13140](https://doi.org/10.1111/2041-210X.13140)
+
+### Software this is built on
+
+- Chang W, Cheng J, Allaire JJ, Sievert C, Schloerke B, Xie Y, Allen J, McPherson
+  J, Dipert A, Borges B. *shiny: Web Application Framework for R*.
+  [doi:10.32614/CRAN.package.shiny](https://doi.org/10.32614/CRAN.package.shiny) —
+  `run_taupatch_app()`, with `leaflet` and `shinyFiles`
+- Garnier S, Ross N, Rudis R, Camargo AP, Sciaini M, Scherer C. *viridisLite:
+  Colorblind-Friendly Color Maps (Lite Version)*.
+  [doi:10.32614/CRAN.package.viridisLite](https://doi.org/10.32614/CRAN.package.viridisLite)
+  — the magma scale used throughout, from the colormaps designed for matplotlib by
+  Stéfan van der Walt and Nathaniel Smith
+- Hijmans RJ. *terra: Spatial Data Analysis*.
+  [doi:10.32614/CRAN.package.terra](https://doi.org/10.32614/CRAN.package.terra) —
+  the projection rasters
+- Kuhn M, Wickham H (2020). *Tidymodels: a collection of packages for modeling and
+  machine learning using tidyverse principles*. <https://www.tidymodels.org> —
+  `parsnip`, `recipes`, `rsample`, `tune`, `workflows`, `yardstick`
+- Pebesma E (2018). Simple features for R: standardized support for spatial vector
+  data. *The R Journal* **10**(1), 439–446.
+  [doi:10.32614/RJ-2018-009](https://doi.org/10.32614/RJ-2018-009) — `sf`
+- Wickham H (2016). *ggplot2: Elegant Graphics for Data Analysis*. Springer.
+  [doi:10.1007/978-3-319-24277-4](https://doi.org/10.1007/978-3-319-24277-4)
+
+`citation()` works on any of the R packages above.

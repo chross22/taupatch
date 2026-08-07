@@ -25,6 +25,27 @@
 #'
 #' # The column names a step will produce, before running it.
 #' derivoce_covariates()$lag_covariate$outputs(list(vars = "CHL", n = 2))
+#' @references
+#' Each step implements a published method, and the citation belongs to that
+#' method rather than to this package. derivoce's own help pages carry the
+#' reference for each function, and its README collects them; the ones behind the
+#' steps here that are not simply arithmetic on the grid:
+#'
+#' Belkin IM, O'Reilly JE (2009). An algorithm for oceanic front detection in
+#' chlorophyll and SST satellite imagery. *Journal of Marine Systems* **78**(3),
+#' 319-326. \doi{10.1016/j.jmarsys.2008.11.018} — `distance_to_front`
+#'
+#' Haller G (2015). Lagrangian coherent structures. *Annual Review of Fluid
+#' Mechanics* **47**, 137-162. \doi{10.1146/annurev-fluid-010313-141322} —
+#' `ftle`, `fsle`
+#'
+#' d'Ovidio F, Fernández V, Hernández-García E, López C (2004). Mixing
+#' structures in the Mediterranean Sea from finite-size Lyapunov exponents.
+#' *Geophysical Research Letters* **31**(17). \doi{10.1029/2004GL020328} —
+#' `fsle`
+#'
+#' `distance_to_shore` measures against Natural Earth coastlines
+#' (<https://www.naturalearthdata.com/>, public domain), via `rnaturalearth`.
 #' @seealso [add_derivoce_covariates()], which runs the configured steps
 #' @export
 derivoce_covariates <- function() {

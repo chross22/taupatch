@@ -28,6 +28,23 @@ it in the config's \code{covariates.copernicus} block.
 names(copernicus_covariates())
 copernicus_covariates()$SST$units
 }
+\references{
+Three Copernicus Marine products supply these, and a run should cite whichever
+of them it fetched from. E.U. Copernicus Marine Service Information:
+
+\emph{Global Ocean Physics Reanalysis} (GLORYS12V1) — \code{SST}, \code{SSS}, \code{BOTT}, \code{UO},
+\code{VO}, \code{SSH}, \code{MLD}, \code{SIC}. \doi{10.48670/moi-00021}
+
+\emph{Global Ocean Colour} (Copernicus-GlobColour) — satellite \code{CHL}, \code{PP},
+\code{DIATO}, \code{DINO}. \doi{10.48670/moi-00281}
+
+\emph{Global Ocean Biogeochemistry Hindcast} — \code{NO3}, \code{PO4}, \code{O2}, \code{PH},
+\code{CHL_MODEL}, \code{NPP_MODEL}. \doi{10.48670/moi-00019}
+
+Downloads go through the Copernicus Marine Toolbox
+(\url{https://toolbox-docs.marine.copernicus.eu/}), which has no DOI of its own —
+credit it by name, and cite the product.
+}
 \seealso{
 \code{\link[datamatch:variable_dictionary]{datamatch::variable_dictionary()}} for the full variable listing
 }

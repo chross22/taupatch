@@ -25,3 +25,9 @@ but the index shifts every cell by the same amount.
 \examples{
 names(climate_index_covariates())
 }
+\references{
+Each index is somebody's published product, and the \code{source} field names
+whose. \code{datamatch::index_dictionary()} carries the citation for each one at
+runtime; two of them (\code{LCR}, \code{AMOC}) are the output of specific papers and
+should be cited when used. See datamatch's README for the list.
+}

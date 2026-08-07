@@ -23,4 +23,10 @@ patch, so sensitivity looks far worse than the model can actually achieve.
 This is the cutoff the original pipeline was reaching for with
 \code{metric.binary = 'ROC'} when it binarised its projections.
 }
+\references{
+Allouche O, Tsoar A, Kadmon R (2006). Assessing the accuracy of species
+distribution models: prevalence, kappa and the true skill statistic (TSS).
+\emph{Journal of Applied Ecology} \strong{43}(6), 1223-1232.
+\doi{10.1111/j.1365-2664.2006.01214.x}
+}
 \keyword{internal}

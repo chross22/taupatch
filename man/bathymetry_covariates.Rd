@@ -28,3 +28,13 @@ study area and cache location from a config.
 \examples{
 names(bathymetry_covariates())
 }
+\references{
+NOAA National Centers for Environmental Information (2022). \emph{ETOPO 2022
+15 Arc-Second Global Relief Model}. \doi{10.25921/fd45-gt74} — the terrain
+itself; \code{datamatch::fetch_bathymetry()} requests its 60 arc-second bedrock
+grid
+
+Pante E, Simon-Bouhet B (2013). marmap: a package for importing, plotting and
+analyzing bathymetric and topographic data in R. \emph{PLoS ONE} \strong{8}(9), e73051.
+\doi{10.1371/journal.pone.0073051} — how it is downloaded
+}

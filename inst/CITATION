@@ -1,0 +1,33 @@
+citHeader(
+  "taupatch implements the model of Ross et al. (2023). Cite the paper for the ",
+  "method and the package for the implementation. The data and methods a given ",
+  "run leans on carry their own citations - see the References section of the ",
+  "README, and each function's own help page."
+)
+
+bibentry(
+  bibtype  = "Article",
+  key      = "ross2023calanus",
+  title    = "Estimating North Atlantic right whale prey based on {Calanus finmarchicus} thresholds",
+  author   = c(person(c("Camille", "H."), "Ross"),
+               person(c("Jeffrey", "A."), "Runge"),
+               person(c("Jason", "J."), "Roberts"),
+               person(c("Damian", "C."), "Brady"),
+               person("Ben", "Tupper"),
+               person(c("Nicholas", "R."), "Record")),
+  journal  = "Marine Ecology Progress Series",
+  year     = "2023",
+  volume   = "703",
+  pages    = "1--16",
+  doi      = "10.3354/meps14204"
+)
+
+bibentry(
+  bibtype  = "Manual",
+  key      = "taupatch",
+  title    = "taupatch: Spatial Habitat Suitability Models for Zooplankton High-Abundance Patches",
+  author   = person("Camille", "Ross"),
+  year     = format(Sys.Date(), "%Y"),
+  note     = paste0("R package version ", meta$Version),
+  url      = "https://github.com/chross22/taupatch"
+)

@@ -12,6 +12,17 @@
 #'   performance), `importance` (permutation variable importance), `type` (the
 #'   model type fitted), `model_data` (what it was fitted on), `predictors`, and
 #'   `threshold`
+#' @references
+#' Kuhn M, Wickham H (2020). *Tidymodels: a collection of packages for modeling
+#' and machine learning using tidyverse principles*.
+#' <https://www.tidymodels.org>
+#'
+#' Thuiller W, Lafourcade B, Engler R, Araújo MB (2009). BIOMOD - a platform for
+#' ensemble forecasting of species distributions. *Ecography* **32**(3),
+#' 369-373. \doi{10.1111/j.1600-0587.2008.05742.x} — what this replaces
+#'
+#' See [model_types()] for the reference behind each model, and
+#' [evaluation_table()] for the metrics.
 #' @export
 fit_patch_model <- function(dat, config) {
   type <- resolve_model_type(config)
@@ -101,6 +112,21 @@ fit_patch_model <- function(dat, config) {
 #' @param cutoff the TSS-maximising cutoff
 #' @return a data frame with `metric`, `threshold`, `value`, `std_err`, and
 #'   `note` columns
+#' @references
+#' Allouche O, Tsoar A, Kadmon R (2006). Assessing the accuracy of species
+#' distribution models: prevalence, kappa and the true skill statistic (TSS).
+#' *Journal of Applied Ecology* **43**(6), 1223-1232.
+#' \doi{10.1111/j.1365-2664.2006.01214.x} — `tss`
+#'
+#' Saito T, Rehmsmeier M (2015). The precision-recall plot is more informative
+#' than the ROC plot when evaluating binary classifiers on imbalanced datasets.
+#' *PLoS ONE* **10**(3), e0118432. \doi{10.1371/journal.pone.0118432} — `pr_auc`
+#'
+#' Sofaer HR, Hoeting JA, Jarnevich CS (2019). The area under the
+#' precision-recall curve as a performance metric for rare binary events.
+#' *Methods in Ecology and Evolution* **10**(4), 565-577.
+#' \doi{10.1111/2041-210X.13140} — the same argument for rare events in species
+#' distribution models, which is what a patch is
 #' @keywords internal
 evaluation_table <- function(predictions, cv_metrics, cutoff) {
   threshold_free <- c("roc_auc", "pr_auc")
@@ -195,6 +221,11 @@ std_err_or_na <- function(cv_metrics, metric) {
 #'
 #' @param predictions held-out predictions from resampling
 #' @return the TSS-maximising cutoff, or `NA_real_` if it cannot be computed
+#' @references
+#' Allouche O, Tsoar A, Kadmon R (2006). Assessing the accuracy of species
+#' distribution models: prevalence, kappa and the true skill statistic (TSS).
+#' *Journal of Applied Ecology* **43**(6), 1223-1232.
+#' \doi{10.1111/j.1365-2664.2006.01214.x}
 #' @keywords internal
 optimal_threshold <- function(predictions) {
   if (is.null(predictions) || !".pred_patch" %in% names(predictions)) {

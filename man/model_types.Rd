@@ -27,6 +27,37 @@ names(model_types())
 model_types()$gam$description
 vapply(model_types(), function(m) m$engine, character(1))
 }
+\references{
+Breiman L (2001). Random forests. \emph{Machine Learning} \strong{45}(1), 5-32.
+\doi{10.1023/A:1010933404324} — \code{rf}
+
+Wright MN, Ziegler A (2017). ranger: a fast implementation of random forests
+for high dimensional data in C++ and R. \emph{Journal of Statistical Software}
+\strong{77}(1), 1-17. \doi{10.18637/jss.v077.i01} — the \code{rf} engine
+
+Friedman JH (2001). Greedy function approximation: a gradient boosting
+machine. \emph{Annals of Statistics} \strong{29}(5), 1189-1232.
+\doi{10.1214/aos/1013203451} — \code{brt}
+
+Elith J, Leathwick JR, Hastie T (2008). A working guide to boosted regression
+trees. \emph{Journal of Animal Ecology} \strong{77}(4), 802-813.
+\doi{10.1111/j.1365-2656.2008.01390.x}
+
+Chen T, Guestrin C (2016). XGBoost: a scalable tree boosting system.
+\emph{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge
+Discovery and Data Mining}, 785-794. \doi{10.1145/2939672.2939785} — the
+\code{brt} engine
+
+McCullagh P, Nelder JA (1989). \emph{Generalized Linear Models}, 2nd edition.
+Chapman and Hall. \doi{10.1007/978-1-4899-3242-6} — \code{glm}
+
+Hastie T, Tibshirani R (1986). Generalized additive models. \emph{Statistical
+Science} \strong{1}(3), 297-310. \doi{10.1214/ss/1177013604} — \code{gam}
+
+Wood SN (2017). \emph{Generalized Additive Models: An Introduction with R}, 2nd
+edition. Chapman and Hall/CRC. \doi{10.1201/9781315370279} — the \code{mgcv}
+reference
+}
 \seealso{
 \code{\link[=build_model_spec]{build_model_spec()}}, which turns a config into a fitted-ready spec
 }

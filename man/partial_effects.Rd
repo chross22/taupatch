@@ -52,6 +52,12 @@ combinations the ocean never produces.
 effects <- partial_effects(model$workflow, model$model_data, model$predictors)
 }
 }
+\references{
+Friedman JH (2001). Greedy function approximation: a gradient boosting
+machine. \emph{Annals of Statistics} \strong{29}(5), 1189-1232.
+\doi{10.1214/aos/1013203451} — where partial dependence comes from, section
+8.2
+}
 \seealso{
 \code{\link[=plot_partial_effects]{plot_partial_effects()}}
 }

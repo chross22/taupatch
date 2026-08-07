@@ -4,9 +4,15 @@
 
 This repo models "tau-patches" — high-abundance patches of a zooplankton species, defined
 by a species-specific abundance threshold — and projects monthly spatial habitat
-suitability maps. The code in `original/` is the version behind Ross et al. (2023): a
-`biomod2` Random Forest trained on EcoMon/CPR/MBON zooplankton stations joined to gridded
-environmental covariates, projected month-by-month across the Northeast US shelf.
+suitability maps. The code in `original/` is the version behind [Ross et al.
+(2023)](https://doi.org/10.3354/meps14204): a `biomod2` ([Thuiller et al.
+2009](https://doi.org/10.1111/j.1600-0587.2008.05742.x)) Random Forest trained on
+EcoMon/CPR/MBON zooplankton stations joined to gridded environmental covariates, projected
+month-by-month across the Northeast US shelf.
+
+This document is about what changed and why. It cites work only where the change turns on
+it; the full reference list for the package — data sources, model methods, metrics — is at
+the bottom of the [README](../README.md#references).
 
 It still describes the science we want, but the implementation has aged out from under it:
 
@@ -63,7 +69,8 @@ It still describes the science we want, but the implementation has aged out from
   `BIOMOD_Projection` per month/year), and it keeps all the training data in one fit.
   Per-month fitting would give each model ~1/12 the data and would trip the
   "≥100 rows and both classes present" guard in thin months.
-- **`biomod2` is dropped entirely** in favor of `tidymodels`. Beyond removing the `setwd()`
+- **`biomod2` is dropped entirely** in favor of [`tidymodels`](https://www.tidymodels.org)
+  (Kuhn & Wickham 2020). Beyond removing the `setwd()`
   and string-pasting workarounds, `tidymodels` is engine-agnostic — swapping RF for boosted
   trees or a GLM becomes a config field, which is what the GUI wants to expose.
 - **Copernicus replaces HYCOM/GlobColour/CCMP.** `datamatch::accessEnvDat()` fetches by
@@ -230,8 +237,9 @@ docs/rebuild_plan.md
 - **Spec** — `rand_forest() |> set_engine("ranger", importance = "permutation") |> set_mode("classification")`.
 - **Resampling** — `vfold_cv(v = cv_folds, strata = patch)`, replacing biomod2's
   `CV.nb.rep = 10` / `data.split.perc = 70`.
-- **Metrics** — `roc_auc`, `kap`, `sens`, `spec`, plus a custom TSS (`sens + spec - 1`),
-  matching the original's `c('ROC', 'TSS', 'KAPPA')`.
+- **Metrics** — `roc_auc`, `kap`, `sens`, `spec`, plus a custom TSS (`sens + spec - 1`,
+  [Allouche et al. 2006](https://doi.org/10.1111/j.1365-2664.2006.01214.x)), matching the
+  original's `c('ROC', 'TSS', 'KAPPA')`.
 - **Tuning** — `tune_grid()` + `finalize_workflow()` only when `model.tune: true`.
 
 Artifacts written per run: `model.rds`, `evals.csv`, `var_importance.csv` — the same

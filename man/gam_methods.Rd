@@ -17,3 +17,9 @@ cross-validation is known to undersmooth, and REML resists it.
 \examples{
 gam_methods()
 }
+\references{
+Wood SN (2011). Fast stable restricted maximum likelihood and marginal
+likelihood estimation of semiparametric generalized linear models. \emph{Journal
+of the Royal Statistical Society: Series B} \strong{73}(1), 3-36.
+\doi{10.1111/j.1467-9868.2010.00749.x}
+}
