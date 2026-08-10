@@ -116,6 +116,22 @@ Tabs, in the order the questions come up:
 remotes::install_github("chross22/taupatch")
 ```
 
+**To get the vignette, ask for it.** `install_github()` does not build vignettes
+by default — it is faster not to, and most installs do not want them — so
+`vignette("taupatch")` finds nothing after a plain install. That is the install
+being economical, not the vignette being missing:
+
+```r
+remotes::install_github("chross22/taupatch", build_vignettes = TRUE)
+vignette("taupatch")
+```
+
+Building it needs `knitr` and `rmarkdown`, and it runs the whole pipeline on the
+mock data as it renders, so expect it to take a minute rather than a moment. If
+you would rather not rebuild, [read it on
+GitHub](vignettes/taupatch.Rmd) instead — the same document, without the
+rendered figures.
+
 Environmental data needs the [Copernicus Marine
 Toolbox](https://help.marine.copernicus.eu/en/collections/4060068-copernicus-marine-toolbox)
 (EU Copernicus Marine Service 2025) installed and configured with your Copernicus
@@ -347,9 +363,57 @@ long the Copernicus download took to get there.
 
 ### Species and life stages
 
-Each species names the prefix of its columns in the database. `column_prefix`
-defaults to the species key, so only an aliased name needs it — `pcal` is the one
-case, since its columns are `pseudo_*`:
+A catalog entry answers one question: **which column or columns hold this
+species' abundance?** There are two ways to answer it, and which one an entry
+uses is not a style choice — it depends on how the database reports the taxon.
+
+| entry form | use it when | what a run can then do |
+|---|---|---|
+| `column_prefix: cfin` | the database resolves life stages, as `cfin_CV`, `cfin_CVI`, … | select particular `stages`, or leave `stages` out to sum every one |
+| `abundance_column: CENTROPAGES_TYPICUS` | the database reports one total and no stages | nothing to select — the column *is* the abundance |
+
+`column_prefix` matches `<prefix>_<something>`, which is why it needs stage
+columns to match against; `abundance_column` names a single column outright.
+Setting both is an error, and so is setting `stages` alongside
+`abundance_column`, because there are no stage columns for it to narrow to.
+
+**You do not have to work this out per taxon.** `species_catalog_from()` reads
+the database and writes the block, choosing the right form for each:
+
+```r
+header <- c("CALANUS_FINMARCHICUS_CV_10M2", "CALANUS_FINMARCHICUS_CVI_10M2",
+            "CENTROPAGES_TYPICUS_10M2")
+
+species_catalog_from(header, aliases = c(cfin = "CALANUS_FINMARCHICUS"))
+#> $cfin
+#> $cfin$column_prefix          # stages resolved, so a prefix
+#> [1] "CALANUS_FINMARCHICUS"
+#> $cfin$threshold
+#> $cfin$threshold$type
+#> [1] "percentile"
+#> $cfin$threshold$value
+#> [1] 0.9
+#>
+#> $ctyp
+#> $ctyp$abundance_column       # a total only, so a column
+#> [1] "CENTROPAGES_TYPICUS"
+```
+
+`aliases` is what lets a config say `cfin` instead of `CALANUS_FINMARCHICUS`;
+without it the key is a shorthand derived from the taxon name. The result goes
+straight into [`generate_config()`](#three-ways-to-get-one) as `species`.
+
+Three functions, three different questions — it is worth knowing which you want:
+
+| | question |
+|---|---|
+| `zoop_taxa(raw_export)` | which taxa does this **raw** export carry, with units still on the names? |
+| `available_species(database)` | which taxa could I model from this **formatted** database? |
+| `species_catalog_from(header)` | write me the catalog block for them |
+
+Once you have a catalog, `column_prefix` defaults to the species key, so only an
+aliased name needs it — `pcal` is the one case in the ECOMON database, since its
+columns are `pseudo_*`:
 
 ```yaml
 species:
