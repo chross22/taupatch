@@ -4,10 +4,13 @@
 \alias{corrected_paired_test}
 \title{A paired test across folds, with the Nadeau-Bengio variance correction}
 \usage{
-corrected_paired_test(differences)
+corrected_paired_test(differences, alternative = c("greater", "two.sided"))
 }
 \arguments{
 \item{differences}{per-fold score of the full model minus the reduced one}
+
+\item{alternative}{\code{"greater"} for a directional hypothesis, \code{"two.sided"}
+when either sign is a finding}
 }
 \value{
 a list of \code{estimate}, \code{std_err}, \code{statistic}, \code{df}, \code{p_value}, \code{n}
@@ -21,9 +24,11 @@ test-set to training-set size in k-fold — which is the standard correction
 and costs roughly a factor of \code{sqrt(2)} off the statistic.
 }
 \details{
-One-sided, because the hypothesis is directional: the question is whether
-removing the covariate makes the model \emph{worse}, and a covariate whose removal
-improves the model has failed the test rather than passed a different one.
+The default is one-sided, because the jackknife's hypothesis is directional:
+the question is whether removing the covariate makes the model \emph{worse}, and a
+covariate whose removal improves the model has failed the test rather than
+passed a different one. Comparing two models is not directional in that way -
+either may be the better - so \code{\link[=compare_runs]{compare_runs()}} asks for \code{two.sided}.
 }
 \references{
 Nadeau C, Bengio Y (2003). Inference for the generalization error. \emph{Machine

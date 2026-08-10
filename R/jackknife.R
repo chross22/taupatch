@@ -469,11 +469,15 @@ subset_workflow <- function(train, vars, config, type) {
 #' test-set to training-set size in k-fold — which is the standard correction
 #' and costs roughly a factor of `sqrt(2)` off the statistic.
 #'
-#' One-sided, because the hypothesis is directional: the question is whether
-#' removing the covariate makes the model *worse*, and a covariate whose removal
-#' improves the model has failed the test rather than passed a different one.
+#' The default is one-sided, because the jackknife's hypothesis is directional:
+#' the question is whether removing the covariate makes the model *worse*, and a
+#' covariate whose removal improves the model has failed the test rather than
+#' passed a different one. Comparing two models is not directional in that way -
+#' either may be the better - so [compare_runs()] asks for `two.sided`.
 #'
 #' @param differences per-fold score of the full model minus the reduced one
+#' @param alternative `"greater"` for a directional hypothesis, `"two.sided"`
+#'   when either sign is a finding
 #' @return a list of `estimate`, `std_err`, `statistic`, `df`, `p_value`, `n`
 #' @references
 #' Nadeau C, Bengio Y (2003). Inference for the generalization error. *Machine
@@ -487,7 +491,9 @@ subset_workflow <- function(train, vars, config, type) {
 #' contains an underscore, and the citation checker's DOI pattern treats one as
 #' a terminator.
 #' @keywords internal
-corrected_paired_test <- function(differences) {
+corrected_paired_test <- function(differences,
+                                  alternative = c("greater", "two.sided")) {
+  alternative <- match.arg(alternative)
   usable <- differences[is.finite(differences)]
   k <- length(usable)
   none <- list(estimate = NA_real_, std_err = NA_real_, statistic = NA_real_,
@@ -500,18 +506,26 @@ corrected_paired_test <- function(differences) {
   std_err <- sqrt(stats::var(usable) * (1 / k + 1 / (k - 1)))
 
   if (!is.finite(std_err) || std_err == 0) {
-    # Identical on every fold. Either the covariate did exactly nothing, or it
-    # did the same thing everywhere - and only the second is evidence.
+    # Identical on every fold. Either the difference was exactly nothing, or it
+    # was the same everywhere - and only the second is evidence.
+    certain <- if (identical(alternative, "two.sided")) {
+      estimate != 0
+    } else {
+      estimate > 0
+    }
     return(list(estimate = estimate, std_err = 0,
                 statistic = if (estimate > 0) Inf else -Inf, df = k - 1,
-                p_value = if (estimate > 0) 0 else 1, n = k))
+                p_value = if (certain) 0 else 1, n = k))
   }
 
   statistic <- estimate / std_err
+  p_value <- if (identical(alternative, "two.sided")) {
+    2 * stats::pt(abs(statistic), df = k - 1, lower.tail = FALSE)
+  } else {
+    stats::pt(statistic, df = k - 1, lower.tail = FALSE)
+  }
   list(estimate = estimate, std_err = std_err, statistic = statistic,
-       df = k - 1,
-       p_value = stats::pt(statistic, df = k - 1, lower.tail = FALSE),
-       n = k)
+       df = k - 1, p_value = p_value, n = k)
 }
 
 #' The likelihood-based test, where the model type has one
