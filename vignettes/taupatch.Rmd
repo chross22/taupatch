@@ -306,6 +306,167 @@ list.files(config$paths$output_dir, recursive = TRUE)[1:20]
 refitting. `diagnostics/cv_predictions.csv` holds the held-out predictions, so
 any metric not in `evals.csv` can be computed without refitting either.
 
+## Which covariates are earning their place
+
+Importance ranks the covariates a model has. It cannot say whether a covariate
+is carrying anything the others were not already carrying — a predictor can rank
+third and be entirely redundant. `jackknife_covariates()` answers that by
+refitting without each one, over the same folds, and seeing how much worse the
+model ranks stations.
+
+It needs no config block; the defaults are used when there is none.
+
+```{r jackknife, message = FALSE}
+jk <- jackknife_covariates(result$data, config)
+
+jk[, c("variable", "score_full", "score_without", "score_only", "contribution")]
+```
+
+Two halves, two questions. **`score_without`** is low when the covariate carries
+something no other covariate has — its *unique* contribution, which is what
+`contribution` measures. **`score_only`** is the model on that covariate alone,
+so it is high when the covariate carries a lot whether or not anything else
+carries it too.
+
+Read the two columns against each other and the mock run says something the
+importance table above could not. `jday` scores well on its own — the synthetic
+data has a real seasonal cycle in it — and contributes nothing on top of the
+others, which have absorbed the same seasonality. That is information which is
+real *and* duplicated, and it is a very different situation from information
+that is not there. Ranking on `contribution` alone would treat the two
+identically.
+
+Some contributions come out negative. That means the model scored *better* on
+average without the covariate, which on this many stations is noise rather than
+a finding — and it is exactly the case the test exists to keep you from
+over-reading.
+
+```{r jackknife-test}
+jk[, c("variable", "contribution", "statistic", "p_value", "p_adjusted",
+       "significant")]
+```
+
+Nothing here is significant, and that is the right answer rather than a broken
+test. Three covariates over a few hundred synthetic stations, scored on five
+folds, is not enough evidence to establish that any one of them is load-bearing.
+A test that returned confident answers from this much data would be the one to
+distrust.
+
+`p_value` is one-sided on the per-fold differences, with the variance inflated
+to account for the folds sharing most of their training rows. At five folds that
+inflation is a factor of 1.5 on the standard error, so every statistic here is
+two-thirds of what a naive paired *t*-test would have reported. It makes no
+difference to the verdict on this run — these differences are nowhere near the
+boundary either way — but it is the difference between a real finding and a
+false one when a covariate lands close to it, which on real data is where the
+interesting ones land. `p_adjusted` then accounts for having asked once per
+covariate. A GLM or a GAM would also fill in `parametric_p` with a likelihood
+ratio test; a forest has no likelihood, so it is `NA` here.
+
+**Nothing is dropped.** That is the default, and it is deliberate:
+
+```{r jackknife-drop}
+jackknife_settings(config)   # NULL: this config has no jackknife block
+
+# What dropping *would* have removed, under the settings the test ran with.
+jackknife_dropped(jk)
+```
+
+Only one name comes back even though all three failed, because
+`min_predictors` floors the model at two covariates and the ones handed back are
+the strongest of those that failed.
+
+A covariate that fails this test is one the *others already account for on these
+stations*, which is a statement about collinearity in this sample at least as
+much as about ecology. Depth and surface temperature carry much of the same
+information on a shelf, and the test will call either one redundant depending on
+which the model reached for first. Turning `covariates.jackknife.drop` on tells
+the pipeline to act on it anyway, and `keep` protects a covariate that is in the
+model because the study is about it:
+
+```{r jackknife-config, eval = FALSE}
+config$covariates$jackknife <- list(drop = TRUE, keep = "jday", workers = 4)
+result <- run_taupatch(config)
+
+result$jackknife                      # the table, also written to the run
+result$config$covariates$exclude      # what came out
+```
+
+## Fitting all the models at once
+
+Rather than choosing an algorithm, fit several and combine them. Set
+`model.type` to `ensemble` and the pipeline does the rest — everything after the
+fit works the same, so nothing else in the config changes.
+
+Four types are available; two are used here because `xgboost` and `mgcv` are
+suggested rather than required.
+
+```{r ensemble-fit, message = FALSE, warning = FALSE}
+config$model$ensemble <- list(types = c("rf", "glm"), rule = "weighted_mean")
+config$paths$output_dir <- file.path(tempdir(), "taupatch_vignette_ens")
+
+result <- run_taupatch(config)
+result$model
+```
+
+Each member's score, and the weight it earned, is the first thing to read. A
+table showing one member near 1.0 and the rest near zero is a single model with
+extra steps.
+
+```{r ensemble-summary}
+result$model$summary
+```
+
+The ensemble's evaluation is **its own**, not the average of its members'. Every
+member was fitted on the same folds from the same seed, so their held-out
+predictions line up row for row, and the combined out-of-fold predictions go
+through the same evaluation as a single model's:
+
+```{r ensemble-eval}
+result$model$evaluation[1:2, c("metric", "value", "lower", "upper")]
+
+# Each member's own, for comparison.
+vapply(result$model$members,
+       function(m) m$evaluation$value[m$evaluation$metric == "roc_auc" &
+                                        is.na(m$evaluation$threshold)],
+       numeric(1))
+```
+
+That distinction matters. Combining members that make *different* mistakes beats
+all of them; combining members that make the same mistakes does not, and only a
+cross-validated ensemble prediction can tell those apart.
+
+Importance is weighted across members, with each member's own kept beside it — a
+predictor the forest leans on and the GLM ignores is a fact about the shape of
+the relationship, and the average is the one number that hides it.
+
+```{r ensemble-importance}
+result$model$importance
+```
+
+Every combination rule is computed and written, so a committee map can be read
+off the same file without refitting. `rule` only picks which one becomes the
+`suitability` layer:
+
+```{r ensemble-layers}
+names(terra::rast(result$projections$geotiff[1]))
+```
+
+`algorithm_sd` is the new one, and it is **not** the same as `suitability_sd`
+from the section above. That one is a single algorithm refitted on resampled
+stations; this one is different algorithms looking at the same stations and
+disagreeing. Both can be on at once, and a cell can be quiet on one and loud on
+the other:
+
+```{r ensemble-spread}
+ens <- readr::read_csv(
+  file.path(config$paths$output_dir, "projections", "suitability.csv"),
+  show_col_types = FALSE
+)
+
+summary(ens[, c("suitability", "algorithm_sd", "suitability_sd")])
+```
+
 ## Moving to real data
 
 Three things change, and nothing else does.
@@ -366,6 +527,10 @@ diagnostics each one contributes. In R:
 - `?covariate_transforms` — and what can be done to one
 - `?model_types` — the four models, and what each is good for
 - `?partial_effects`, `?gam_smooth_terms` — reading a fitted model
+- `?jackknife_covariates`, `?jackknife_settings` — testing which covariates earn
+  their place
+- `?fit_patch_ensemble`, `?ensemble_settings`, `?ensemble_rules` — combining
+  several model types
 
 ## Citing a run
 

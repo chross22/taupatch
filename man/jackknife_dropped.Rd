@@ -4,12 +4,14 @@
 \alias{jackknife_dropped}
 \title{Which covariates a jackknife would drop}
 \usage{
-jackknife_dropped(jk, settings)
+jackknife_dropped(jk, settings = attr(jk, "settings"))
 }
 \arguments{
 \item{jk}{the result of \code{\link[=jackknife_covariates]{jackknife_covariates()}}}
 
-\item{settings}{from \code{\link[=jackknife_settings]{jackknife_settings()}}}
+\item{settings}{from \code{\link[=jackknife_settings]{jackknife_settings()}}. Defaults to the settings the
+jackknife was actually run under, which it carries on itself — so asking a
+result what it would drop needs nothing but the result.}
 }
 \value{
 a character vector of covariate names, possibly empty

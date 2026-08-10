@@ -140,6 +140,25 @@ test_that("jackknife_dropped respects the keep list and the floor", {
                character())
 })
 
+test_that("a jackknife result knows what settings it ran under", {
+  # So asking a result what it would drop needs nothing but the result, which
+  # is how it gets used interactively.
+  jk <- data.frame(variable = c("SST", "SSS", "CHL"),
+                   contribution = c(0.08, 0.002, 0.001),
+                   significant = c(TRUE, FALSE, FALSE),
+                   stringsAsFactors = FALSE)
+  attr(jk, "settings") <- list(keep = "SSS", min_predictors = 1)
+
+  expect_equal(jackknife_dropped(jk), "CHL")
+  # An explicit argument still wins over the carried one.
+  expect_equal(jackknife_dropped(jk, list(keep = character(),
+                                          min_predictors = 1)),
+               c("CHL", "SSS"))
+
+  attr(jk, "settings") <- NULL
+  expect_error(jackknife_dropped(jk), "does not carry any")
+})
+
 test_that("a covariate whose test could not be computed is never dropped", {
   # NA is not evidence of absence. This is checked at the point the flag is
   # set, since jackknife_dropped() only sees the flag.
