@@ -15,14 +15,31 @@ run_taupatch(config_path, project = TRUE, keep_covariates = 50000)
 \code{0} returns none. See \code{\link[=thin_covariates]{thin_covariates()}} for what is kept and why.}
 }
 \value{
-a list with \code{config}, \code{data} (the labeled modeling data), \code{model} (the
-\code{fit_patch_model()} result), \code{projections} (or \code{NULL} if skipped),
-\code{covariate_means}, and \code{covariates} (a thinned grid, for mapping)
+a list with \code{config} (as the run actually used it, so a jackknife that
+dropped a covariate shows in \code{covariates.exclude}), \code{data} (the labeled
+modeling data), \code{model} (a \code{\link[=fit_patch_model]{fit_patch_model()}} result, or a
+\code{\link[=fit_patch_ensemble]{fit_patch_ensemble()}} one), \code{projections} (or \code{NULL} if skipped),
+\code{jackknife} (or \code{NULL} if not run), \code{covariate_means}, and \code{covariates} (a
+thinned grid, for mapping)
 }
 \description{
 Loads a config and runs every stage in order: read zooplankton stations, fetch
 and attach environmental covariates, label high-abundance patches against the
 species threshold, fit the model, and project monthly habitat suitability maps.
+}
+\details{
+Two optional stages sit between labelling and fitting, both off by default
+and both turned on from the config:
+\itemize{
+\item \code{covariates.jackknife} tests each covariate by leaving it out — see
+\code{\link[=jackknife_settings]{jackknife_settings()}}. It runs before the fit so its answer can change
+which covariates the model gets, and it only removes any if
+\code{jackknife.drop} says so.
+\item \code{model.ensemble} fits several algorithms instead of one and combines them —
+see \code{\link[=ensemble_settings]{ensemble_settings()}}. Everything after the fit works the same either
+way, so a config that turns this on gets ensemble projections without
+changing anything else.
+}
 }
 \examples{
 \dontrun{

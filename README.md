@@ -21,7 +21,9 @@
   - [Transformations](#transformations)
   - [Preparing covariates before the join](#preparing-covariates-before-the-join)
   - [Combining products of different resolution](#combining-products-of-different-resolution)
+  - [Testing which covariates earn their place](#testing-which-covariates-earn-their-place)
   - [Model type](#model-type)
+  - [Fitting all of them at once](#fitting-all-of-them-at-once)
   - [Training and projection windows](#training-and-projection-windows)
   - [How far to trust a map](#how-far-to-trust-a-map)
   - [Reading the evaluation](#reading-the-evaluation)
@@ -638,6 +640,100 @@ native resolution.
 A run reports which covariates were upsampled, and records them on the result as
 an `upsampled` attribute.
 
+### Testing which covariates earn their place
+
+`covariates.jackknife` refits the model without each covariate in turn and asks
+how much worse it ranks stations. Off by default, because it is a full
+cross-validation per covariate — twice over, since it also fits each covariate
+alone — which is why it parallelizes:
+
+```yaml
+covariates:
+  jackknife: true             # or the block below, to change the defaults
+```
+
+```yaml
+covariates:
+  jackknife:
+    metric: roc_auc           # or: pr_auc
+    criterion: fold           # or: parametric  (glm and gam only)
+    alpha: 0.05
+    adjust: holm              # or: BH, bonferroni, none
+    drop: false               # DEFAULT: report, never remove on its own
+    keep: [DEPTH, jday]       # never dropped, whatever the test says
+    min_predictors: 2
+    workers: true             # true = cores - 1; a count; false = sequential
+```
+
+It writes `covariate_jackknife.csv`, one row per covariate:
+
+| variable | score_full | score_without | score_only | contribution | p_value | p_adjusted | significant |
+|---|---|---|---|---|---|---|---|
+| SST | 0.857 | 0.791 | 0.812 | 0.066 | 0.004 | 0.020 | TRUE |
+| DEPTH | 0.857 | 0.828 | 0.774 | 0.029 | 0.031 | 0.124 | FALSE |
+| jday | 0.857 | 0.855 | 0.611 | 0.002 | 0.402 | 0.402 | FALSE |
+
+The two halves answer different questions and the pair is what makes the table
+readable. **`score_without`** is low when the covariate carries something no
+other covariate has — its *unique* contribution. **`score_only`** is high when
+it carries a lot on its own, whether or not anything else carries it too. A
+covariate can score high on one and nothing on the other, and that combination
+is the informative one: `DEPTH` above is worth as much alone as `SST` is, and
+almost nothing on top of what the rest already say.
+
+**The significance test.** Every refit uses the same cross-validation folds as
+the main model, so the comparison is paired fold by fold and none of the
+difference is the split moving underneath it. The reported `p_value` is a
+one-sided test of whether leaving the covariate out makes the model worse,
+computed from the per-fold differences with the variance correction of Nadeau &
+Bengio (2003).
+
+The correction is load-bearing. A plain paired t-test treats the folds as
+independent, and they are not — any two training sets share most of their rows —
+so its variance estimate is badly optimistic and it calls far too much
+significant (Dietterich 1998). There is no unbiased estimator of the variance of
+k-fold cross-validation (Bengio & Grandvalet 2004); this inflates the naive
+variance by `1/k + 1/(k-1)` instead, which roughly halves the *t* statistic.
+`p_adjusted` then accounts for having asked the question once per covariate.
+
+For a GLM and a GAM there is a classical test of the same hypothesis, and it is
+reported *beside* the fold test rather than instead of it: a drop-in-deviance
+likelihood ratio test for `glm`, and `mgcv`'s approximate term p-value for `gam`
+(approximate because it conditions on smoothing parameters estimated from the
+same data, so it runs anti-conservative — Wood 2017 §6.12). A forest and a
+boosted tree have no likelihood, so those columns are `NA` there. That is why
+`criterion: fold` is the default: it means the same thing for all four types.
+
+**Dropping is opt-in, and that is deliberate.** With `drop: false` the run
+reports the table, says what dropping *would* have removed, and fits on
+everything. A covariate that fails this test is one the *other covariates
+already account for* on these stations, which is a statement about collinearity
+in this sample at least as much as about ecology. Bottom depth and sea surface
+temperature carry much of the same information on a shelf; the test will happily
+call either one redundant depending on which the model reached for first.
+Removing it silently would make the map look better while deleting the variable
+a reader would have asked about. `keep` is the escape hatch for exactly that: a
+covariate that is in the model because the study is about it stays in the model.
+
+When `drop: true`, the rejected covariates are written into
+`covariates.exclude`, which is the mechanism that already existed for keeping a
+fetched covariate out of the model. So a dropped covariate is still downloaded
+and still available to anything that needs it as an ingredient — a gradient's
+velocity components, say — it just stops being a predictor. The run's returned
+`config` shows exactly what came out.
+
+Called directly, it needs no config block at all:
+
+```r
+jk <- jackknife_covariates(dat, config)
+jk[c("variable", "contribution", "p_adjusted", "significant")]
+jackknife_dropped(jk, jackknife_settings(config))   # what drop would remove
+```
+
+Parallelism forks, which Windows does not have, so it runs sequentially there
+and says so. It is one model fit per covariate per fold either way — minutes,
+not hours — it just does not get faster with more cores.
+
 ### Model type
 
 Four models, chosen with one word:
@@ -717,6 +813,94 @@ absolute terms, but the ranking holds.
 
 Only `ranger` is needed for the default. `brt` needs `xgboost` and `gam` needs
 `mgcv`. Both are checked before fitting rather than at load.
+
+### Fitting all of them at once
+
+Rather than picking one algorithm and hoping, fit several and combine them. This
+is `BIOMOD_EnsembleModeling()` from the pipeline this package replaces:
+
+```yaml
+model:
+  type: ensemble            # all four, with the defaults below
+```
+
+```yaml
+model:
+  type: ensemble
+  ensemble:
+    types: [rf, brt, glm, gam]
+    rule: weighted_mean     # mean | weighted_mean | median | committee
+    weight_by: tss          # tss | roc_auc | pr_auc | equal
+    min_score: 0.4          # members below this are excluded from the average
+    workers: true
+    settings:               # per-member overrides of the model block
+      gam:
+        method: REML
+      brt:
+        learn_rate: 0.01
+```
+
+Everything after the fit works the same either way, so a config that turns this
+on gets ensemble projections without changing anything else.
+
+**Four ways to combine.** All of them are computed and written on every run;
+`rule` picks which one becomes the `suitability` layer, and the others go beside
+it — the disagreement between rules is itself worth looking at, and recomputing
+them means refitting.
+
+| `rule` | What it does |
+|---|---|
+| `mean` | Plain average of the probabilities |
+| `weighted_mean` | Average in proportion to how well each member scored |
+| `median` | Robust average. The one to reach for when a single member is capable of going badly wrong somewhere on the grid — a boosted tree extrapolating, usually. A mean lets that member drag a cell; a median does not |
+| `committee` | Each member binarises at *its own* TSS-optimal cutoff, and the cell gets the fraction of members calling it a patch. Reads directly as agreement — 0.75 means three of four algorithms say patch — but throws away how confident each was |
+
+**The ensemble gets its own honest evaluation.** Every member is fitted on the
+same folds from the same seed, so their held-out predictions line up row for
+row. The ensemble's out-of-fold predictions are built by combining members on
+the rows none of them saw, and the reported `evals.csv`, the TSS-optimal cutoff
+and its bootstrap interval all come from those — the same functions, on the same
+footing, as a single model's. This matters because the obvious alternative is
+wrong: averaging the members' *scores* would report the ensemble as the average
+of its parts, and that is not what an ensemble does. Combining members that make
+different mistakes beats all of them; combining members that make the same
+mistakes does not. Only a cross-validated ensemble prediction tells those apart.
+
+`ensemble_members.csv` is the first thing to read afterwards:
+
+| type | label | score | metric | cutoff | qualifies | weight |
+|---|---|---|---|---|---|---|
+| brt | Boosted regression trees | 0.612 | tss | 0.089 | TRUE | 0.31 |
+| rf | Random forest | 0.604 | tss | 0.051 | TRUE | 0.30 |
+| gam | Generalized additive model | 0.541 | tss | 0.112 | TRUE | 0.27 |
+| glm | Logistic regression | 0.238 | tss | 0.104 | TRUE | 0.12 |
+
+A table showing one member near 1.0 and the rest near zero is a single model
+with extra steps, and only this file says so. `min_score` is biomod2's
+`metric.select.thresh` under a plainer name, and 0.4 on TSS is a low bar
+deliberately — it is there to catch a member that failed to fit anything, not to
+tune the ensemble by selecting its best members on their own evaluation scores,
+which would be selection on the numbers used to report it. A member whose
+package is missing, or that will not fit, is dropped with a warning rather than
+failing the run; two is the floor.
+
+Variable importance is weighted across members, with the per-member columns kept
+beside it. A predictor the forest leans on and the GLM ignores is a fact about
+the shape of the relationship, and the average is the one number that hides it.
+Coefficients and smooths go to `diagnostics/members/<type>/`, since an ensemble
+has none of its own and averaging them would describe a model nobody fitted.
+
+**Two different things are called an ensemble here**, and they are independent:
+
+| | Combines over | Its spread means |
+|---|---|---|
+| `model.ensemble` | **algorithms** | A forest and a logistic regression looking at the same shelf and drawing different maps → `algorithm_sd` |
+| `projection.uncertainty` | **resamples of the data**, within one algorithm | How much the fit moves when the stations move → `suitability_sd` |
+
+Both can be on. When they are, each member carries its own resample interval,
+those replicates are pooled in proportion to member weight, and the algorithm
+disagreement is reported on top in its own column — so a projection carries both
+without either standing in for the other.
 
 ### Training and projection windows
 
@@ -855,18 +1039,22 @@ refitting.
 Each run writes to `paths.output_dir`:
 
 ```
-model.rds              fitted tidymodels workflow
+model.rds              fitted tidymodels workflow (or the whole ensemble object)
 evals.csv              performance, stating the cutoff each metric belongs to
 cv_metrics.csv         the raw per-fold resampling table
 var_importance.csv     permutation variable importance
 var_importance.png
 threshold.yaml         the abundance threshold used, and the probability cutoff with its interval
+covariate_jackknife.csv    with covariates.jackknife: each covariate's contribution and its p-value
+ensemble_members.csv       with model.ensemble: each algorithm's score, weight, and whether it qualified
+member_cv_metrics.csv      with model.ensemble: the per-fold resampling table, per algorithm
 diagnostics/roc_curve.png, pr_curve.png, calibration.png, threshold_performance.png
 diagnostics/cv_predictions.csv     held-out predictions, for any metric not tabulated
 diagnostics/partial_effects.png    what each predictor does to patch probability
 diagnostics/coefficients.png       glm only: signed effects with intervals
 diagnostics/smooth_terms.csv       gam only: effective degrees of freedom per smooth
 diagnostics/gam_smooths.png        gam only, with fancygam: fitted smooths with error bands
+diagnostics/members/<type>/        with model.ensemble: the above, one directory per algorithm
 projections/suitability.csv       every cell of every month: species, year, month, lon, lat, probability
                                   plus the interval and novelty columns, with projection.uncertainty
 projections/suitability.grd       the same, as one raster with a layer per month (projection.write_grd)
@@ -891,6 +1079,9 @@ R/prejoin.R             prejoin_steps(), apply_prejoin_steps()
 R/derivoce.R            derivoce_covariates(), add_derivoce_covariates()
 R/model.R               fit_patch_model()
 R/model_types.R         model_types(), permutation_importance()
+R/jackknife.R           jackknife_covariates(), the leave-one-out covariate test
+R/ensemble.R            fit_patch_ensemble(), combining several model types
+R/parallel.R            the worker pool both of those run on
 R/plot_effects.R        partial_effects(), glm_coefficients(), gam_smooth_terms()
 R/uncertainty.R         novelty_surface(), the projection interval
 R/evaluation_boot.R     bootstrap_evaluation(), the interval on every metric
@@ -1041,6 +1232,10 @@ Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
 
 ### Models
 
+- Araújo MB, New M (2007). Ensemble forecasting of species distributions.
+  *Trends in Ecology & Evolution* **22**(1), 42–47.
+  [doi:10.1016/j.tree.2006.09.010](https://doi.org/10.1016/j.tree.2006.09.010) —
+  why an ensemble of algorithms rather than a chosen best one
 - Breiman L (2001). Random forests. *Machine Learning* **45**(1), 5–32.
   [doi:10.1023/A:1010933404324](https://doi.org/10.1023/A:1010933404324) — `rf`,
   and the origin of permutation importance
@@ -1059,6 +1254,11 @@ Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
 - Hastie T, Tibshirani R (1986). Generalized additive models. *Statistical
   Science* **1**(3), 297–310.
   [doi:10.1214/ss/1177013604](https://doi.org/10.1214/ss/1177013604) — `gam`
+- Marmion M, Parviainen M, Luoto M, Heikkinen RK, Thuiller W (2009). Evaluation
+  of consensus methods in predictive species distribution modelling. *Diversity
+  and Distributions* **15**(1), 59–69.
+  [doi:10.1111/j.1472-4642.2008.00491.x](https://doi.org/10.1111/j.1472-4642.2008.00491.x)
+  — the ensemble combination rules, compared against each other
 - Marra G, Wood SN (2011). Practical variable selection for generalized additive
   models. *Computational Statistics & Data Analysis* **55**(7), 2372–2387.
   [doi:10.1016/j.csda.2011.02.004](https://doi.org/10.1016/j.csda.2011.02.004) —
@@ -1087,6 +1287,28 @@ Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
   *Journal of Applied Ecology* **43**(6), 1223–1232.
   [doi:10.1111/j.1365-2664.2006.01214.x](https://doi.org/10.1111/j.1365-2664.2006.01214.x)
   — `tss`, and the cutoff that maximises it
+- Bengio Y, Grandvalet Y (2004). No unbiased estimator of the variance of k-fold
+  cross-validation. *Journal of Machine Learning Research* **5**, 1089–1105.
+  <https://jmlr.org/papers/v5/grandvalet04a.html> — why the jackknife's test
+  needs a variance correction rather than a better estimator
+- Bouckaert RR, Frank E (2004). Evaluating the replicability of significance
+  tests for comparing learning algorithms. *Advances in Knowledge Discovery and
+  Data Mining*, 3–12.
+  [doi:10.1007/978-3-540-24775-3_3](https://doi.org/10.1007/978-3-540-24775-3_3)
+  — the correction applied to k-fold specifically
+- Dietterich TG (1998). Approximate statistical tests for comparing supervised
+  classification learning algorithms. *Neural Computation* **10**(7), 1895–1923.
+  [doi:10.1162/089976698300017197](https://doi.org/10.1162/089976698300017197) —
+  the inflated Type I error of the uncorrected paired test
+- Elith J, Phillips SJ, Hastie T, Dudík M, Chee YE, Yates CJ (2011). A
+  statistical explanation of MaxEnt for ecologists. *Diversity and
+  Distributions* **17**(1), 43–57.
+  [doi:10.1111/j.1472-4642.2010.00725.x](https://doi.org/10.1111/j.1472-4642.2010.00725.x)
+  — the leave-one-out / only-one jackknife pair
+- Nadeau C, Bengio Y (2003). Inference for the generalization error. *Machine
+  Learning* **52**(3), 239–281.
+  [doi:10.1023/A:1024068626366](https://doi.org/10.1023/A:1024068626366) — the
+  variance correction behind the jackknife's `p_value`
 - Fisher A, Rudin C, Dominici F (2019). All models are wrong, but many are useful:
   learning a variable's importance by studying an entire class of prediction
   models simultaneously. *Journal of Machine Learning Research* **20**(177), 1–81.

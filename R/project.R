@@ -61,9 +61,22 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
           round(resolution * 111), " km), the grid the covariates were joined ",
           "onto")
 
+  if (inherits(model, "taupatch_ensemble")) {
+    qualifying <- sum(model$summary$qualifies)
+    message("  combining ", qualifying, " algorithms by ", model$rule,
+            "; the other rules and each member's own surface go beside it")
+  }
+
   uncertainty <- uncertainty_settings(config)
   if (!is.null(uncertainty)) {
-    members <- length(model$ensemble)
+    # An algorithm ensemble carries one resample ensemble per member, which are
+    # pooled at prediction time; a single model carries the one.
+    members <- if (inherits(model, "taupatch_ensemble")) {
+      sum(vapply(model$members, function(m) length(m$ensemble %||% list()),
+                 integer(1)))
+    } else {
+      length(model$ensemble)
+    }
     message("  uncertainty on: ", members, "-member ", uncertainty$method,
             " ensemble, ", round(100 * uncertainty$level), "% interval",
             if (isTRUE(uncertainty$novelty)) ", plus a novelty surface" else "")
@@ -132,7 +145,7 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
       # about, and an unremarked map does not say so. Reported per month,
       # because it is the projected months at the edges of the record that
       # usually drift out.
-      extra <- uncertainty_layers(predicted)
+      extra <- projection_layers(predicted)
       if ("novelty" %in% extra) {
         note <- novelty_message(predicted$novelty, predicted$novel_variable)
         if (!is.null(note)) {
@@ -240,6 +253,9 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
 #'   spread and novelty columns; `NULL` if no complete rows
 #' @keywords internal
 predict_grid <- function(model, grid, uncertainty = NULL) {
+  if (inherits(model, "taupatch_ensemble")) {
+    return(predict_grid_ensemble(model, grid, uncertainty))
+  }
   complete <- grid[stats::complete.cases(grid[model$predictors]), ]
   if (nrow(complete) == 0) return(NULL)
 
@@ -262,18 +278,30 @@ predict_grid <- function(model, grid, uncertainty = NULL) {
   out
 }
 
-#' Uncertainty layers present on a projection
+#' Layers present on a projection beyond the suitability surface
 #'
-#' Which of the optional columns [predict_grid()] actually produced. The
-#' ensemble can come back empty — a model type that refuses to refit on a
-#' resample, say — and a map is written either way rather than the run failing
-#' at the last step.
+#' Which of the optional columns [predict_grid()] actually produced. Any of them
+#' can come back empty — a model type that refuses to refit on a resample, an
+#' ensemble member that will not predict this month's grid — and a map is
+#' written either way rather than the run failing at the last step.
+#'
+#' Three different quantities can appear here and they are deliberately not
+#' merged. `suitability_sd` is one algorithm refitted on resampled stations;
+#' `algorithm_sd` is different algorithms on the same stations; `novelty` is how
+#' far outside the training data the cell sits. A cell can be quiet on one and
+#' loud on another, and that is the informative case rather than a contradiction.
+#'
+#' Character columns are excluded by construction: these names become raster
+#' layers, and `novel_variable` travels in the CSV instead.
 #'
 #' @param predicted a projection from [predict_grid()]
 #' @return character vector of column names beyond `suitability`
 #' @keywords internal
-uncertainty_layers <- function(predicted) {
+projection_layers <- function(predicted) {
+  rules <- paste0("suitability_", ensemble_rules())
   intersect(c("suitability_sd", "suitability_lower", "suitability_upper",
+              "algorithm_sd", "algorithm_range", "n_algorithms", rules,
+              grep("^member_", names(predicted), value = TRUE),
               "novelty"),
             names(predicted))
 }
