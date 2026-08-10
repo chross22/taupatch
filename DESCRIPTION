@@ -50,7 +50,8 @@ Suggests:
     shiny,
     shinyFiles,
     rnaturalearth,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    withr
 Remotes:
     chross22/datamatch,
     chross22/derivoce,
