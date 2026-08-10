@@ -23,23 +23,31 @@ plot_projection <- function(predicted, year, month, species, path) {
   invisible(path)
 }
 
-#' Plot how far a monthly projection can be trusted
+#' Draw the layers that say how far to trust a projection
 #'
-#' The companion to [plot_projection()]: the same cells, panelled by what is
-#' uncertain about them rather than by what is predicted. Whichever of the
-#' uncertainty surfaces the run produced are drawn, and nothing else.
+#' Two or three panels above the map, one per question the projection can be
+#' doubted on. Only the ones a run actually produced are drawn.
 #'
-#' The two panels are deliberately not merged into a single "confidence" layer.
+#' The panels are deliberately not merged into a single "confidence" layer.
 #' They measure different things and are free to disagree in either direction,
 #' and the disagreement is the informative part: a cell can be stable across
 #' every member and still be extrapolated, because agreement between members
-#' trained on the same data is not evidence about ground the data never covered.
-#' Blending the two would average that case away instead of showing it.
+#' trained on the same data is not evidence about ground the data never
+#' covered. Blending them would average that case away instead of showing it.
 #'
-#' Diverging colour on the novelty panel, centred at zero, because zero is the
-#' meaningful break: above it the model is interpolating, below it the cell is
-#' outside the training range on some predictor and the model has no evidence
-#' for what it says there.
+#' @section Drawn by fancyfx:
+#' The panels themselves come from [fancyfx::plotUncertainty()] and
+#' [fancyfx::plotExtrapolation()] rather than being built here. That is worth a
+#' sentence because it used to be ninety lines of `ggplot2` in this file, and
+#' the replacement is better in two ways this package would otherwise have had
+#' to write for itself: cells are downsampled above `max.cells`, which a real
+#' Copernicus grid needs and the hand-built version did not do, and the
+#' extrapolation ramp diverges about zero in colours that survive the common
+#' colour vision deficiencies.
+#'
+#' `fancyfx` is a Suggests. Without it there is a message and no file, the same
+#' way [plot_gam_smooths()] behaves — the projection itself, and every number
+#' behind these panels, is written either way.
 #'
 #' @param predicted a projection from `predict_grid()` with uncertainty columns
 #' @param year year being projected
@@ -50,83 +58,49 @@ plot_projection <- function(predicted, year, month, species, path) {
 #' @seealso [novelty_surface()] for how the novelty panel is computed
 #' @export
 plot_projection_uncertainty <- function(predicted, year, month, species, path) {
+  drawable <- intersect(c("suitability_sd", "algorithm_sd", "novelty"),
+                        names(predicted))
+  if (length(drawable) == 0) return(invisible(NULL))
+
+  if (!has_fancyfx()) {
+    message("  skipping the uncertainty panels: install fancyfx to draw them ",
+            "(remotes::install_github('chross22/fancyfx'))")
+    return(invisible(NULL))
+  }
+
   panels <- list()
 
-  if ("suitability_sd" %in% names(predicted)) {
-    panels$spread <- ggplot2::ggplot(
-      predicted, ggplot2::aes(x = .data$lon, y = .data$lat,
-                              fill = .data$suitability_sd)) +
-      ggplot2::geom_raster() +
-      ggplot2::scale_fill_viridis_c(option = "magma", na.value = "white",
-                                     name = "SD") +
-      ggplot2::labs(subtitle = "Spread across the ensemble")
+  if ("suitability_sd" %in% drawable) {
+    panels$spread <- fancyfx::plotUncertainty(
+      projection_raster(predicted, "suitability_sd"), legend.lab = "SD"
+    ) + ggplot2::labs(subtitle = "Spread across the ensemble")
   }
 
-  if ("algorithm_sd" %in% names(predicted)) {
-    # A third panel only when a multi-algorithm ensemble was fitted, and kept
-    # separate from the spread panel above it on purpose: that one is one
-    # algorithm refitted on resampled stations, this one is different
-    # algorithms on the same stations. A cell where the forest and the GLM
-    # disagree is not the same worry as a cell where the forest is unstable.
-    panels$algorithms <- ggplot2::ggplot(
-      predicted, ggplot2::aes(x = .data$lon, y = .data$lat,
-                              fill = .data$algorithm_sd)) +
-      ggplot2::geom_raster() +
-      ggplot2::scale_fill_viridis_c(option = "cividis", na.value = "white",
-                                     name = "SD") +
-      ggplot2::labs(subtitle = "Disagreement between algorithms")
+  # A multi-algorithm ensemble only. Kept separate from the panel above on
+  # purpose: that one is a single algorithm refitted on resampled stations,
+  # this one is different algorithms on the same stations, and a cell where the
+  # forest and the GLM disagree is not the same worry as a cell where the
+  # forest is unstable.
+  if ("algorithm_sd" %in% drawable) {
+    panels$algorithms <- fancyfx::plotUncertainty(
+      projection_raster(predicted, "algorithm_sd"), legend.lab = "SD",
+      option = "cividis"
+    ) + ggplot2::labs(subtitle = "Disagreement between algorithms")
   }
 
-  if ("novelty" %in% names(predicted)) {
-    # Extrapolated cells are usually a small minority, and a scale stretched
-    # over the whole range renders them invisible - which defeats the panel.
-    # So the visual weight goes to the negatives: saturated red below zero,
-    # against a muted ramp above it. The alarming colour marks the cells to
-    # distrust rather than, as a plain diverging scale does, the safest ones.
-    outside <- sum(!is.na(predicted$novelty) & predicted$novelty < 0)
-    scored <- sum(!is.na(predicted$novelty))
-
-    subtitle <- if (outside == 0) {
-      "Every cell is inside the training range"
-    } else {
-      culprit <- names(sort(table(
-        predicted$novel_variable[!is.na(predicted$novelty) & predicted$novelty < 0]
-      ), decreasing = TRUE))[1]
-      sprintf("%d of %d cells (%d%%) are outside the training range, mostly %s",
-              outside, scored, max(1, round(100 * outside / scored)), culprit)
-    }
-
-    panels$novelty <- ggplot2::ggplot(
-      predicted, ggplot2::aes(x = .data$lon, y = .data$lat,
-                              fill = .data$novelty)) +
-      ggplot2::geom_raster() +
-      ggplot2::scale_fill_gradientn(
-        colours = c("#67001f", "#d6604d", "#fddbc7", "#e8eef2", "#7fa8c4",
-                    "#3a6b8a"),
-        # Zero sits where the warm colours end. rescale puts the break at the
-        # true zero of this month's range rather than at the midpoint of it,
-        # so the boundary means the same thing on every map in a run.
-        values = novelty_scale_positions(predicted$novelty),
-        na.value = "white", name = "Similarity"
-      ) +
-      ggplot2::labs(subtitle = subtitle)
+  if ("novelty" %in% drawable) {
+    # Already a MESS surface, so it is passed as one rather than recomputed
+    # from the covariates - which is what `training = NULL` means here.
+    panels$novelty <- fancyfx::plotExtrapolation(
+      projection_raster(predicted, "novelty"), legend.lab = "Similarity"
+    ) + ggplot2::labs(subtitle = novelty_subtitle(predicted))
   }
-
-  if (length(panels) == 0) return(invisible(NULL))
-
-  panels <- lapply(panels, function(p) {
-    p + ggplot2::coord_quickmap() +
-      ggplot2::labs(x = NULL, y = NULL) +
-      ggplot2::theme_bw() +
-      ggplot2::theme(panel.grid = ggplot2::element_blank(),
-                     legend.position = "bottom")
-  })
 
   title <- paste0(species, " - ", month.name[month], " ", year,
                   ": how far to trust it")
 
   # Stacked with a shared title rather than side by side, so each panel keeps
-  # the aspect ratio the coastline has and neither is squashed. patchwork is a
+  # the aspect ratio the coastline has and none is squashed. patchwork is a
   # Suggests, and its `/` operator is the whole reason it is wanted here - so
   # without it, fall back to the panel that carries more of the answer rather
   # than failing. Novelty is that panel: the spread cannot tell you a cell is
@@ -142,37 +116,47 @@ plot_projection_uncertainty <- function(predicted, year, month, species, path) {
   }
 
   ggplot2::ggsave(path, plot = combined, width = 7,
-                  height = if (stacked) 11 else 7, dpi = 150)
+                  height = if (stacked) 4 + 3.5 * length(panels) else 7,
+                  dpi = 150)
   invisible(path)
 }
 
-#' Where zero falls on a novelty colour ramp
+#' One column of a projection, as a raster fancyfx can draw
 #'
-#' `scale_fill_gradientn()` places its colours at positions in `[0, 1]` across
-#' the data range, so zero — the only value on a novelty surface that means
-#' anything fixed — lands somewhere different on every map unless it is put
-#' there deliberately. This returns positions that pin the warm-to-cool break to
-#' the true zero, so red means extrapolated on every month of a run rather than
-#' meaning "low for this month".
+#' The projection is a table of cells at this point in the pipeline, and every
+#' fancyfx map takes a `SpatRaster`. The cells are already on a regular grid —
+#' `project_patch_model()` builds the GeoTIFF from the same frame — so this is
+#' a change of container rather than any resampling.
 #'
-#' @param novelty the novelty values being plotted
-#' @return a vector of six positions in `[0, 1]`, for the six ramp colours
+#' @param predicted a projection from `predict_grid()`
+#' @param column which column to rasterize
+#' @return a single-layer `SpatRaster`
 #' @keywords internal
-novelty_scale_positions <- function(novelty) {
-  finite <- novelty[is.finite(novelty)]
-  # Nothing to anchor: an all-positive or empty surface gets an even ramp.
-  if (length(finite) == 0) return(seq(0, 1, length.out = 6))
+projection_raster <- function(predicted, column) {
+  out <- terra::rast(as.data.frame(predicted[c("lon", "lat", column)]),
+                     type = "xyz", crs = "EPSG:4326")
+  names(out) <- column
+  out
+}
 
-  low <- min(finite)
-  high <- max(finite)
-  if (high <= low) return(seq(0, 1, length.out = 6))
+#' The one line that says whether a novelty panel needed looking at
+#'
+#' @param predicted a projection carrying `novelty` and `novel_variable`
+#' @return a subtitle string
+#' @keywords internal
+novelty_subtitle <- function(predicted) {
+  outside <- sum(!is.na(predicted$novelty) & predicted$novelty < 0)
+  scored <- sum(!is.na(predicted$novelty))
+  if (outside == 0) return("Every cell is inside the training range")
 
-  zero <- (0 - low) / (high - low)
-  # Clamped off the ends so the break stays visible when everything is on one
-  # side of zero, which is the common case.
-  zero <- min(max(zero, 0.02), 0.98)
-
-  c(0, zero * 0.5, zero * 0.95, zero, zero + (1 - zero) * 0.5, 1)
+  culprit <- if ("novel_variable" %in% names(predicted)) {
+    names(sort(table(
+      predicted$novel_variable[!is.na(predicted$novelty) & predicted$novelty < 0]
+    ), decreasing = TRUE))[1]
+  }
+  sprintf("%d of %d cells (%d%%) are outside the training range%s",
+          outside, scored, max(1, round(100 * outside / scored)),
+          if (is.null(culprit)) "" else paste(", mostly", culprit))
 }
 
 #' Build a leaflet map of a projection GeoTIFF

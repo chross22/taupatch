@@ -1263,7 +1263,7 @@ projections/suitability.csv       every cell of every month: species, year, mont
 projections/suitability.grd       the same, as one raster with a layer per month (projection.write_grd)
 projections/<species>_<year>_<month>.tif      one layer, or one per surface with projection.uncertainty
 plots/<species>_<year>_<month>.png
-plots/<species>_<year>_<month>_uncertainty.png   the spread and novelty panels, with projection.uncertainty
+plots/<species>_<year>_<month>_uncertainty.png   the spread and novelty panels, with projection.uncertainty (needs fancyfx)
 covariates/monthly_means.csv       study-area mean per covariate, month, and year
 covariates/<covariate>_heatmap.png month-by-year heatmap
 bathymetry/                        marmap's cached NOAA download, if used

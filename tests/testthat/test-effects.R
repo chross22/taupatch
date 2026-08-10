@@ -266,3 +266,57 @@ test_that("abundance over the record is one continuous series", {
   expect_false("GeomLine" %in% geoms)
   expect_true(all(geoms %in% c("GeomPoint", "GeomJitter")))
 })
+
+test_that("the uncertainty panels are drawn for whichever surfaces exist", {
+  skip_on_cran()
+  skip_if_not_installed("fancyfx")
+  cells <- expand.grid(lon = seq(-70, -66, by = 0.5),
+                       lat = seq(41, 44, by = 0.5))
+  set.seed(1)
+  cells$suitability_sd <- runif(nrow(cells), 0, 0.1)
+  cells$novelty <- runif(nrow(cells), -20, 90)
+  cells$novel_variable <- "SST"
+
+  path <- tempfile(fileext = ".png")
+  expect_equal(plot_projection_uncertainty(cells, 2018, 6, "cfin", path), path)
+  expect_true(file.exists(path))
+
+  # An algorithm ensemble adds a third panel; a run without one does not get it.
+  cells$algorithm_sd <- runif(nrow(cells), 0, 0.2)
+  three <- tempfile(fileext = ".png")
+  plot_projection_uncertainty(cells, 2018, 6, "cfin", three)
+  expect_gt(file.info(three)$size, file.info(path)$size)
+})
+
+test_that("a projection with no uncertainty surfaces draws nothing", {
+  cells <- data.frame(lon = c(-70, -69), lat = c(41, 42),
+                      suitability = c(0.2, 0.8))
+
+  expect_null(plot_projection_uncertainty(cells, 2018, 6, "cfin",
+                                          tempfile(fileext = ".png")))
+})
+
+test_that("without fancyfx the panels are skipped, not failed", {
+  # fancyfx is a Suggests, and the projection itself plus every number behind
+  # these panels is written either way.
+  cells <- data.frame(lon = c(-70, -69), lat = c(41, 42),
+                      novelty = c(10, -5), novel_variable = c("SST", "SST"))
+  path <- tempfile(fileext = ".png")
+
+  local_mocked_bindings(has_fancyfx = function() FALSE)
+  expect_message(result <- plot_projection_uncertainty(cells, 2018, 6, "cfin",
+                                                        path),
+                 "install fancyfx")
+  expect_null(result)
+  expect_false(file.exists(path))
+})
+
+test_that("the novelty subtitle counts the cells and names the culprit", {
+  clean <- data.frame(novelty = c(10, 40, 90))
+  expect_match(novelty_subtitle(clean), "Every cell is inside")
+
+  mixed <- data.frame(novelty = c(-5, 40, -2, 90),
+                      novel_variable = c("CHL", NA, "CHL", NA))
+  expect_match(novelty_subtitle(mixed), "2 of 4 cells")
+  expect_match(novelty_subtitle(mixed), "mostly CHL")
+})
