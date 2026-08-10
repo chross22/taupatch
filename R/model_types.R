@@ -169,6 +169,12 @@ resolve_model_type <- function(config) {
          call. = FALSE)
   }
 
+  if (identical(type, "ensemble")) {
+    stop("model.type is 'ensemble', which is several types rather than one. ",
+         "Fit it with fit_patch_ensemble(), which run_taupatch() does ",
+         "automatically; fit_patch_model() takes a single type.\nThe members ",
+         "are set by model.ensemble.types.", call. = FALSE)
+  }
   if (!(type %in% names(catalog))) {
     stop("Unknown model.type '", type, "'.\nAvailable: ",
          paste(names(catalog), collapse = ", "), call. = FALSE)

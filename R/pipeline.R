@@ -4,13 +4,28 @@
 #' and attach environmental covariates, label high-abundance patches against the
 #' species threshold, fit the model, and project monthly habitat suitability maps.
 #'
+#' Two optional stages sit between labelling and fitting, both off by default
+#' and both turned on from the config:
+#'
+#' * `covariates.jackknife` tests each covariate by leaving it out — see
+#'   [jackknife_settings()]. It runs before the fit so its answer can change
+#'   which covariates the model gets, and it only removes any if
+#'   `jackknife.drop` says so.
+#' * `model.ensemble` fits several algorithms instead of one and combines them —
+#'   see [ensemble_settings()]. Everything after the fit works the same either
+#'   way, so a config that turns this on gets ensemble projections without
+#'   changing anything else.
+#'
 #' @param config_path path to a config YAML file, or an already-loaded config list
 #' @param project whether to produce monthly projections after fitting
 #' @param keep_covariates the most covariate grid cells to return for mapping;
 #'   `0` returns none. See [thin_covariates()] for what is kept and why.
-#' @return a list with `config`, `data` (the labeled modeling data), `model` (the
-#'   `fit_patch_model()` result), `projections` (or `NULL` if skipped),
-#'   `covariate_means`, and `covariates` (a thinned grid, for mapping)
+#' @return a list with `config` (as the run actually used it, so a jackknife that
+#'   dropped a covariate shows in `covariates.exclude`), `data` (the labeled
+#'   modeling data), `model` (a [fit_patch_model()] result, or a
+#'   [fit_patch_ensemble()] one), `projections` (or `NULL` if skipped),
+#'   `jackknife` (or `NULL` if not run), `covariate_means`, and `covariates` (a
+#'   thinned grid, for mapping)
 #' @examples
 #' \dontrun{
 #' result <- run_taupatch(system.file("configs/mock_test.yaml", package = "taupatch"))
@@ -74,11 +89,34 @@ run_taupatch <- function(config_path, project = TRUE, keep_covariates = 50000) {
           " (", sum(dat$patch == "patch"), " patch / ",
           sum(dat$patch == "non_patch"), " non-patch)")
 
+  # Before fitting, not after: the point of testing covariates is to decide
+  # which ones the model gets, and a test run against the final model would be
+  # describing a model that has already been built.
+  jackknife <- NULL
+  jackknife_config <- jackknife_settings(config)
+  if (!is.null(jackknife_config)) {
+    message("Jackknifing covariates...")
+    jackknife <- jackknife_covariates(dat, config, jackknife_config)
+    report_jackknife(jackknife, jackknife_config)
+    write_jackknife(jackknife, config)
+    if (isTRUE(jackknife_config$drop)) {
+      config <- apply_jackknife_drop(config,
+                                     jackknife_dropped(jackknife, jackknife_config))
+    }
+  }
+
   message("Fitting model...")
-  model <- fit_patch_model(dat, config)
+  ensemble <- ensemble_settings(config)
+  model <- if (is.null(ensemble)) {
+    fit_patch_model(dat, config)
+  } else {
+    fit_patch_ensemble(dat, config, ensemble)
+  }
   write_model_outputs(model, config)
   write_covariate_summary(covariate_means, config)
-  message("  ROC AUC: ", signif(model$metrics$mean[model$metrics$.metric == "roc_auc"], 4))
+  # Read off the evaluation table rather than the metrics one, since that is
+  # the table both a single model and an ensemble fill in the same way.
+  message("  ROC AUC: ", signif(evaluation_value(model, "roc_auc"), 4))
 
   projections <- NULL
   if (project) {
@@ -89,7 +127,7 @@ run_taupatch <- function(config_path, project = TRUE, keep_covariates = 50000) {
 
   message("Output written to ", config$paths$output_dir)
   list(config = config, data = dat, model = model, projections = projections,
-       covariate_means = covariate_means,
+       covariate_means = covariate_means, jackknife = jackknife,
        # A thinned copy, for looking at rather than modelling. The full grid is
        # millions of points on a real fetch, and a map of every one of them
        # would be a map of a subsample anyway once it hit the screen.
@@ -111,7 +149,10 @@ write_model_outputs <- function(model, config) {
   out <- config$paths$output_dir
   dir.create(out, recursive = TRUE, showWarnings = FALSE)
 
-  saveRDS(model$workflow, file.path(out, "model.rds"))
+  # An ensemble has no single workflow, so the whole object is what gets saved -
+  # it holds every member's, and a projection needs all of them.
+  saveRDS(model$workflow %||% model, file.path(out, "model.rds"))
+  if (inherits(model, "taupatch_ensemble")) write_ensemble_outputs(model, out)
   # evals.csv states the cutoff each metric belongs to, and reports the
   # threshold-dependent ones at both 0.5 and the TSS-optimal cutoff. The raw
   # resampling table is kept alongside for anything that wants the per-fold
@@ -182,8 +223,76 @@ write_diagnostic_plots <- function(model, out) {
   plot_threshold_performance(predictions,
                              file.path(diagnostics, "threshold_performance.png"))
 
+  # An ensemble has no coefficients or smooths of its own; its members do, and
+  # theirs are written into a directory each rather than averaged into
+  # something no model actually fitted.
+  if (inherits(model, "taupatch_ensemble")) {
+    for (type in names(model$members)) {
+      member_dir <- file.path(diagnostics, "members", type)
+      dir.create(member_dir, recursive = TRUE, showWarnings = FALSE)
+      write_effect_plots(model$members[[type]], member_dir)
+    }
+    return(invisible(NULL))
+  }
+
   write_effect_plots(model, diagnostics)
   invisible(NULL)
+}
+
+#' Write an ensemble's own artifacts
+#'
+#' What a single model has no equivalent of: which algorithms were fitted, how
+#' each scored, what weight it was given, and whether it qualified. This is the
+#' first thing to read after an ensemble run — a table showing one member at
+#' 0.9 weight and three near zero is a single model with extra steps, and only
+#' this file says so.
+#'
+#' @param model a `taupatch_ensemble` from [fit_patch_ensemble()]
+#' @param out the run's output directory
+#' @return `NULL`, invisibly
+#' @keywords internal
+write_ensemble_outputs <- function(model, out) {
+  readr::write_csv(model$summary, file.path(out, "ensemble_members.csv"))
+  if (!is.null(model$member_metrics)) {
+    readr::write_csv(model$member_metrics,
+                     file.path(out, "member_cv_metrics.csv"))
+  }
+  invisible(NULL)
+}
+
+#' Write the covariate jackknife table
+#'
+#' Written whether or not anything was dropped, and written before the model is
+#' fitted, so a run that turned `drop` on leaves a record of what it removed and
+#' on what evidence.
+#'
+#' @param jk the result of [jackknife_covariates()]
+#' @param config a config list, as returned by `load_config()`
+#' @return `NULL`, invisibly
+#' @keywords internal
+write_jackknife <- function(jk, config) {
+  out <- config$paths$output_dir
+  dir.create(out, recursive = TRUE, showWarnings = FALSE)
+  readr::write_csv(jk, file.path(out, "covariate_jackknife.csv"))
+  invisible(NULL)
+}
+
+#' One metric's value from a model's evaluation table
+#'
+#' The threshold-free metrics live on the rows with no cutoff. Reading them from
+#' here rather than from the resampling table is what lets a single model and an
+#' ensemble be asked the same question — the ensemble's resampling table is one
+#' per member, and its own performance is not the average of those.
+#'
+#' @param model a [fit_patch_model()] or [fit_patch_ensemble()] result
+#' @param metric a threshold-free metric name
+#' @return the value, or `NA_real_`
+#' @keywords internal
+evaluation_value <- function(model, metric = "roc_auc") {
+  table <- model$evaluation
+  if (is.null(table)) return(NA_real_)
+  value <- table$value[table$metric == metric & is.na(table$threshold)]
+  if (length(value) == 1) value else NA_real_
 }
 
 #' Write covariate summaries and month-by-year heatmaps
@@ -235,6 +344,7 @@ pipeline_stages <- function() {
       "^Matching covariates to stations",
       "^Attaching climate indices",
       "^Labeling patches",
+      "^Jackknifing covariates",
       "^Fitting model",
       "^Projecting monthly suitability",
       "^Output written to"
@@ -248,11 +358,15 @@ pipeline_stages <- function() {
       "Matching covariates to stations",
       "Attaching climate indices",
       "Labelling high-abundance patches",
+      "Testing covariates by jackknife",
       "Fitting and cross-validating the model",
       "Projecting monthly maps",
       "Writing output"
     ),
-    at = c(0.02, 0.06, 0.55, 0.60, 0.64, 0.72, 0.76, 0.78, 0.80, 0.92, 0.99),
+    # The jackknife is the widest band after the download when it runs at all:
+    # it is a full cross-validation per covariate, twice over.
+    at = c(0.02, 0.06, 0.55, 0.60, 0.64, 0.72, 0.76, 0.78, 0.79, 0.86, 0.94,
+           0.99),
     stringsAsFactors = FALSE
   )
 }

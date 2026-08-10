@@ -23,6 +23,7 @@ Imports:
     datamatch,
     dplyr,
     ggplot2,
+    parallel,
     parsnip,
     recipes,
     rsample,

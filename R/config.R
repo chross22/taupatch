@@ -25,6 +25,7 @@ load_config <- function(path) {
   validate_study_area(config)
   validate_covariates(config)
   validate_uncertainty(config)
+  validate_jackknife(config)
 
   config$species$resolved <- resolve_species(config)
 
@@ -282,6 +283,18 @@ validate_threshold <- function(threshold, species_name) {
 #' @return `TRUE` invisibly; errors otherwise
 #' @keywords internal
 validate_model <- function(config) {
+  # An ensemble has no single type of its own. Its members are validated
+  # instead, each under the config it will actually be fitted with - so a
+  # per-member override that cannot work is an error now rather than partway
+  # through fitting the ensemble.
+  ensemble <- ensemble_settings(config)
+  if (!is.null(ensemble)) {
+    for (type in ensemble$types) {
+      validate_model(member_config(config, type, ensemble))
+    }
+    return(invisible(TRUE))
+  }
+
   type <- resolve_model_type(config)
   entry <- model_types()[[type]]
 

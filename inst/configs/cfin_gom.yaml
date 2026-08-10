@@ -164,14 +164,65 @@ covariates:
   # Days fetched in parallel. Modest values only - the bottleneck is the
   # Copernicus API, not local CPU.
   n_workers: 4
+  # Test each covariate by refitting without it and seeing how much worse the
+  # model ranks stations. Off by default: it is a full cross-validation per
+  # covariate, twice over (once leaving it out, once with it alone), which is
+  # why `workers` is here. Run taupatch::jackknife_settings() for the block.
+  #
+  # Read the table it writes to covariate_jackknife.csv before touching `drop`.
+  # A covariate that fails this test is one the OTHER covariates already
+  # account for, which on a shelf - where depth and temperature carry much of
+  # the same information - says as much about collinearity in this sample as
+  # about ecology. `drop` is false by default for that reason, and `keep` is
+  # for the covariate that is in the model because the study is about it.
+  # jackknife:
+  #   metric: roc_auc      # or pr_auc; both are threshold-free
+  #   criterion: fold      # the corrected paired test across folds, for any
+  #                        # model type. `parametric` uses the GLM likelihood
+  #                        # ratio / GAM term p-value instead, which only exist
+  #                        # for those two types.
+  #   alpha: 0.05
+  #   adjust: holm         # for having asked the question once per covariate
+  #   drop: false          # DEFAULT. Report; never remove on its own.
+  #   keep: [DEPTH, jday]  # never dropped, whatever the test says
+  #   min_predictors: 2
+  #   workers: true        # true = cores - 1; a count; false = sequential
 
 model:
   # rf | brt | glm | gam - taupatch::model_types() describes each.
+  # `ensemble` fits several of them and combines their maps; see the block
+  # below and taupatch::ensemble_settings().
   type: rf
   trees: 500
   cv_folds: 10
   tune: false
   seed: 42
+  # Fit more than one algorithm and average them, rather than picking one and
+  # hoping. This is BIOMOD_EnsembleModeling() from the pipeline this package
+  # replaces. Set `type: ensemble` above to turn it on with these defaults, or
+  # write the block to change them.
+  #
+  # Note this is a different thing from projection.uncertainty below. That one
+  # resamples the data within one algorithm; this one combines across
+  # algorithms. Both can be on, and a projection then carries both spreads in
+  # separate columns - algorithm_sd against suitability_sd - because a cell can
+  # be quiet on one and loud on the other.
+  # ensemble:
+  #   types: [rf, brt, glm, gam]
+  #   rule: weighted_mean  # mean | weighted_mean | median | committee.
+  #                        # Every rule is written; this picks which one is the
+  #                        # `suitability` layer.
+  #   weight_by: tss       # tss | roc_auc | pr_auc | equal, at each member's
+  #                        # own optimal cutoff
+  #   min_score: 0.4       # members below this are excluded from the average.
+  #                        # A low bar on purpose: it is there to catch a
+  #                        # member that failed, not to select the best ones.
+  #   workers: true
+  #   settings:            # per-member overrides of the model block above
+  #     gam:
+  #       method: REML
+  #     brt:
+  #       learn_rate: 0.01
 
 projection:
   # Months to map. Omit years/months to reuse the training window; set them to

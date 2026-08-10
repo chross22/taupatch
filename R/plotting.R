@@ -62,6 +62,21 @@ plot_projection_uncertainty <- function(predicted, year, month, species, path) {
       ggplot2::labs(subtitle = "Spread across the ensemble")
   }
 
+  if ("algorithm_sd" %in% names(predicted)) {
+    # A third panel only when a multi-algorithm ensemble was fitted, and kept
+    # separate from the spread panel above it on purpose: that one is one
+    # algorithm refitted on resampled stations, this one is different
+    # algorithms on the same stations. A cell where the forest and the GLM
+    # disagree is not the same worry as a cell where the forest is unstable.
+    panels$algorithms <- ggplot2::ggplot(
+      predicted, ggplot2::aes(x = .data$lon, y = .data$lat,
+                              fill = .data$algorithm_sd)) +
+      ggplot2::geom_raster() +
+      ggplot2::scale_fill_viridis_c(option = "cividis", na.value = "white",
+                                     name = "SD") +
+      ggplot2::labs(subtitle = "Disagreement between algorithms")
+  }
+
   if ("novelty" %in% names(predicted)) {
     # Extrapolated cells are usually a small minority, and a scale stretched
     # over the whole range renders them invisible - which defeats the panel.
