@@ -131,7 +131,11 @@ covariates:
       bottom: BOTT           # SST_BOTT_vgrad; the stratification index
     - type: lag_covariate
       vars: [CHL]
-      n: 1                   # CHL_lag1; last month's bloom feeds this month
+      # Quoted, and it has to be. YAML 1.1 reads a bare `n` as the boolean
+      # false, so `n: 1` would name this key FALSE and the step would silently
+      # fall back to a one-month lag. taupatch recovers the spelling on read,
+      # but quoting keeps the file correct for anything else that opens it.
+      "n": 1                 # CHL_lag1; last month's bloom feeds this month
     - type: integrate_covariate
       vars: [CHL]
       window: year           # CHL_int; the original pipeline's int_chl

@@ -14,7 +14,7 @@ load_config <- function(path) {
   if (!file.exists(path)) {
     stop("Config file not found: ", path, call. = FALSE)
   }
-  config <- yaml::read_yaml(path)
+  config <- read_config_yaml(path)
 
   config <- resolve_config_paths(config, path)
   config <- apply_config_defaults(config)
@@ -35,6 +35,97 @@ load_config <- function(path) {
   }
 
   config
+}
+
+#' Read a config YAML without losing keys that spell a boolean
+#'
+#' `yaml::read_yaml()` parses YAML 1.1, where a bare `n` is the boolean `false`.
+#' That is correct for a *value* and wrong for a *key*, and the difference is
+#' silent: a derivoce step written
+#'
+#' ```yaml
+#' - type: lag_covariate
+#'   vars: [CHL]
+#'   n: 2
+#' ```
+#'
+#' parses to a list whose key is named `FALSE`, so `spec$n` is `NULL` and the
+#' step falls back to a one-month lag. The config asked for two, the run used
+#' one, and nothing said so. The same goes for `y`, `yes`, `no`, `on`, `off`,
+#' `true` and `false` in any capitalisation.
+#'
+#' The fix is to keep the source text. `yaml`'s handlers are given the original
+#' scalar as it was written — `"n"`, not `FALSE` — so this marks each one and
+#' then, once the structure exists, restores it: text in a name position is the
+#' key the file actually wrote, and text in a value position becomes the logical
+#' it meant. The two cannot be told apart while parsing, which is exactly why
+#' this is two passes rather than a cleverer handler.
+#'
+#' @param path path to a config YAML file
+#' @return the parsed config list
+#' @seealso [write_config_yaml()], the write side — `yaml::as.yaml()` already
+#'   quotes these keys on the way out, so a config this package writes is read
+#'   correctly by anything
+#' @keywords internal
+read_config_yaml <- function(path) {
+  mark <- function(x) paste0(yaml_bool_marker, x)
+  restore_yaml_bools(
+    yaml::read_yaml(path, handlers = list("bool#yes" = mark, "bool#no" = mark))
+  )
+}
+
+#' The marker that carries a boolean's source text through parsing
+#'
+#' A control character, so it cannot collide with anything a YAML file could
+#' legitimately contain — including a quoted string that was meant to be the
+#' text `"true"`, which must survive as that text and not become a logical.
+#'
+#' A string rather than an attribute or a class because it has to survive
+#' `yaml` collapsing a sequence of scalars into an atomic vector, which drops
+#' attributes. `[true, false]` would otherwise come back as two strings.
+#'
+#' @keywords internal
+yaml_bool_marker <- "taupatch-bool"
+
+#' Turn marked scalars back into keys and logicals
+#'
+#' Names get the source text they were written with; values get the logical
+#' that text meant. A sequence that mixes a marked scalar with an unmarked one
+#' cannot be a logical vector, so it keeps the text — `[true, maybe]` is a list
+#' of two strings, which is the only reading available.
+#'
+#' @param x a parsed YAML value
+#' @return `x` with markers resolved
+#' @keywords internal
+restore_yaml_bools <- function(x) {
+  if (is.list(x)) {
+    names(x) <- unmark_yaml_bool(names(x))
+    return(lapply(x, restore_yaml_bools))
+  }
+  if (!is.character(x) || length(x) == 0) return(x)
+
+  marked <- startsWith(x, yaml_bool_marker)
+  if (!any(marked)) return(x)
+
+  source <- unmark_yaml_bool(x)
+  if (!all(marked)) return(source)
+  # The YAML 1.1 spellings of true. Everything else the handlers see is a false.
+  tolower(source) %in% c("y", "yes", "true", "on")
+}
+
+#' Strip the boolean marker, leaving what the file wrote
+#'
+#' Anchored at the start rather than replaced wherever it appears, so a quoted
+#' value that happens to contain the marker's text further along is left alone.
+#'
+#' @param x a character vector, or `NULL` for an unnamed list
+#' @return `x` with any marker prefix removed
+#' @keywords internal
+unmark_yaml_bool <- function(x) {
+  if (is.null(x)) return(NULL)
+  marked <- startsWith(x, yaml_bool_marker)
+  x[marked] <- substring(x[marked], nchar(yaml_bool_marker) + 1L)
+  x
 }
 
 #' Resolve config paths relative to the project directory

@@ -24,6 +24,92 @@ test_that("column_prefix defaults to the species key but can alias it", {
   expect_equal(resolve_species(config)$column_prefix, "newsp")
 })
 
+# A config file on disk, so the YAML parser is actually exercised. Building the
+# list in R skips the only place these bugs can happen.
+write_yaml_text <- function(lines) {
+  path <- tempfile(fileext = ".yaml")
+  writeLines(lines, path)
+  path
+}
+
+test_that("a key that spells a boolean keeps its own name", {
+  # YAML 1.1 reads a bare `n` as false, so `n: 2` would name the key FALSE and
+  # a lag_covariate step would silently fall back to one month.
+  path <- write_yaml_text(c("steps:", "  - type: lag_covariate", "    n: 2"))
+
+  parsed <- read_config_yaml(path)
+
+  expect_equal(names(parsed$steps[[1]]), c("type", "n"))
+  expect_equal(parsed$steps[[1]]$n, 2)
+})
+
+test_that("every YAML 1.1 boolean spelling survives as a key", {
+  path <- write_yaml_text(c("n: 1", "y: 2", "no: 3", "yes: 4", "off: 5",
+                            "on: 6", "true: 7", "false: 8", "N: 9", "Off: 10"))
+
+  parsed <- read_config_yaml(path)
+
+  expect_equal(names(parsed), c("n", "y", "no", "yes", "off", "on", "true",
+                                "false", "N", "Off"))
+  expect_equal(unname(unlist(parsed)), 1:10)
+})
+
+test_that("a boolean in a value position is still a boolean", {
+  # The other half of the fix. Recovering key spellings must not turn the
+  # config's actual switches into strings.
+  path <- write_yaml_text(c("model:", "  tune: false", "  select: yes",
+                            "covariates:", "  normalize: true", "  thin: off",
+                            "flags: [true, false]"))
+
+  parsed <- read_config_yaml(path)
+
+  expect_identical(parsed$model$tune, FALSE)
+  expect_identical(parsed$model$select, TRUE)
+  expect_identical(parsed$covariates$normalize, TRUE)
+  expect_identical(parsed$covariates$thin, FALSE)
+  # A sequence of them collapses to an atomic vector, which drops attributes -
+  # which is why the source text is carried in the string rather than beside it.
+  expect_identical(parsed$flags, c(TRUE, FALSE))
+})
+
+test_that("a quoted string that spells a boolean stays a string", {
+  path <- write_yaml_text(c("species:", "  active: 'true'", "  label: \"no\"",
+                            "note: not a bool"))
+
+  parsed <- read_config_yaml(path)
+
+  expect_identical(parsed$species$active, "true")
+  expect_identical(parsed$species$label, "no")
+  expect_identical(parsed$note, "not a bool")
+})
+
+test_that("the shipped config's lag reaches derivoce with the lag it asks for", {
+  # The end-to-end version: the bug was invisible in cfin_gom.yaml precisely
+  # because its `n: 1` matched the fallback, so this pins the whole path.
+  path <- system.file("configs", "cfin_gom.yaml", package = "taupatch")
+  if (!nzchar(path)) path <- test_path("..", "..", "inst", "configs", "cfin_gom.yaml")
+
+  config <- read_config_yaml(path)
+  lag <- Filter(function(s) identical(s$type, "lag_covariate"),
+                config$covariates$derivoce)[[1]]
+
+  expect_equal(lag$n, 1)
+  expect_false("FALSE" %in% names(lag))
+})
+
+test_that("a config the package writes is read correctly by a plain parser", {
+  # yaml::as.yaml quotes these keys on the way out, so the round trip does not
+  # depend on the reader knowing about any of this.
+  path <- tempfile(fileext = ".yaml")
+  save_config(list(covariates = list(derivoce = list(
+    list(type = "lag_covariate", vars = "SST", n = 2)
+  ))), path, header = FALSE)
+
+  plain <- yaml::read_yaml(path)
+
+  expect_equal(plain$covariates$derivoce[[1]]$n, 2)
+})
+
 test_that("defaults target ECOMON", {
   config <- apply_config_defaults(list())
 
