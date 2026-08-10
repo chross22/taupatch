@@ -72,6 +72,23 @@ test_that("a boolean in a value position is still a boolean", {
   expect_identical(parsed$flags, c(TRUE, FALSE))
 })
 
+test_that("an empty config field survives the boolean walk", {
+  # The walk rebuilds every list it descends into, and an empty YAML field
+  # parses to NULL. Rebuilding by assigning back into the list - `x[] <- lapply`
+  # rather than replacing it - drops NULL elements entirely, which would make
+  # `"mtry" %in% names(config$model)` false for a field the file does mention.
+  path <- write_yaml_text(c("model:", "  mtry:", "  tune: false",
+                            "covariates:", "  transform:",
+                            "  normalize: true"))
+
+  parsed <- read_config_yaml(path)
+
+  expect_equal(names(parsed$model), c("mtry", "tune"))
+  expect_null(parsed$model$mtry)
+  expect_equal(names(parsed$covariates), c("transform", "normalize"))
+  expect_identical(parsed$covariates$normalize, TRUE)
+})
+
 test_that("a quoted string that spells a boolean stays a string", {
   path <- write_yaml_text(c("species:", "  active: 'true'", "  label: \"no\"",
                             "note: not a bool"))
