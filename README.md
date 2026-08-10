@@ -722,13 +722,43 @@ and still available to anything that needs it as an ingredient — a gradient's
 velocity components, say — it just stops being a predictor. The run's returned
 `config` shows exactly what came out.
 
-Called directly, it needs no config block at all:
+Called directly it needs no config block at all, which is the way to use it
+interactively:
 
 ```r
-jk <- jackknife_covariates(dat, config)
-jk[c("variable", "contribution", "p_adjusted", "significant")]
-jackknife_dropped(jk, jackknife_settings(config))   # what drop would remove
+result <- run_taupatch(config, project = FALSE)
+jk <- jackknife_covariates(result$data, config)
+
+jk[c("variable", "score_without", "score_only", "contribution", "p_adjusted",
+     "significant")]
+#>   variable score_without score_only contribution p_adjusted significant
+#> 1      SST         0.791      0.812        0.066      0.020        TRUE
+#> 2    DEPTH         0.828      0.774        0.029      0.124       FALSE
+#> 3     jday         0.855      0.611        0.002      0.402       FALSE
+
+jackknife_dropped(jk)          # what drop would remove, had it been on
+#> [1] "DEPTH" "jday"
 ```
+
+Or from the config, as part of a run. `result$jackknife` is the same table, and
+`result$config` shows what the run actually fitted on:
+
+```r
+config$covariates$jackknife <- list(drop = TRUE, keep = "jday", workers = 4)
+result <- run_taupatch(config)
+#> Jackknifing covariates...
+#>   jackknifing 3 covariates: 7 cross-validations across 4 workers
+#>   no detectable contribution at alpha = 0.05 (holm-adjusted): DEPTH, jday
+#>   covariates.jackknife.drop is on: removing DEPTH
+
+result$config$covariates$exclude
+#> [1] "DEPTH"
+```
+
+`jday` failed the test and stayed, because `keep` named it. With `drop` left at
+its default the last two lines read `covariates.jackknife.drop is off, so
+nothing is removed. Setting it would drop: DEPTH, jday` — and the run fits on
+everything.
 
 Parallelism forks, which Windows does not have, so it runs sequentially there
 and says so. It is one model fit per covariate per fold either way — minutes,
@@ -841,7 +871,42 @@ model:
 ```
 
 Everything after the fit works the same either way, so a config that turns this
-on gets ensemble projections without changing anything else.
+on gets ensemble projections without changing anything else:
+
+```r
+config$model$type <- "ensemble"
+result <- run_taupatch(config)
+#> Fitting model...
+#>   fitting 4 ensemble members (rf, brt, glm, gam) across 4 workers
+#>   ROC AUC: 0.8916
+#> Projecting monthly suitability...
+#>   combining 4 algorithms by weighted_mean; the other rules and each
+#>   member's own surface go beside it
+
+result$model
+#> <taupatch ensemble>
+#>   rule:  weighted_mean
+#>   members (4 of 4 qualifying):
+#>  type     score metric qualifies weight
+#>   brt 0.6120990    tss      TRUE   0.31
+#>    rf 0.6043118    tss      TRUE   0.30
+#>   gam 0.5412287    tss      TRUE   0.27
+#>   glm 0.2381044    tss      TRUE   0.12
+#>
+#>   ensemble ROC AUC (out of fold): 0.8916
+#>   classification threshold: 0.08881
+```
+
+`fit_patch_ensemble()` does the same thing without the pipeline around it, and
+the result is a drop-in for a `fit_patch_model()` one:
+
+```r
+ensemble <- fit_patch_ensemble(dat, config)
+ensemble$summary                         # scores, weights, who qualified
+ensemble$evaluation                      # the ensemble's own, out of fold
+ensemble$members$gam                     # each member, entire
+project_patch_model(ensemble, env_dat, config)
+```
 
 **Four ways to combine.** All of them are computed and written on every run;
 `rule` picks which one becomes the `suitability` layer, and the others go beside

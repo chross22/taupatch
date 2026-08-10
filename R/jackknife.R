@@ -617,7 +617,9 @@ gam_term_p_values <- function(fit, predictors) {
 #' rather than an arbitrary one.
 #'
 #' @param jk the result of [jackknife_covariates()]
-#' @param settings from [jackknife_settings()]
+#' @param settings from [jackknife_settings()]. Defaults to the settings the
+#'   jackknife was actually run under, which it carries on itself — so asking a
+#'   result what it would drop needs nothing but the result.
 #' @return a character vector of covariate names, possibly empty
 #' @examples
 #' jk <- data.frame(
@@ -631,7 +633,12 @@ gam_term_p_values <- function(fit, predictors) {
 #' jackknife_dropped(jk, list(keep = "CHL", min_predictors = 1))
 #' @seealso [jackknife_covariates()]
 #' @export
-jackknife_dropped <- function(jk, settings) {
+jackknife_dropped <- function(jk, settings = attr(jk, "settings")) {
+  if (is.null(settings)) {
+    stop("No jackknife settings given, and `jk` does not carry any. Pass the ",
+         "result of jackknife_settings(), or a list with `keep` and ",
+         "`min_predictors`.", call. = FALSE)
+  }
   keep <- as.character(settings$keep %||% character())
   floor <- as.integer(settings$min_predictors %||% 2L)
 
