@@ -7,13 +7,19 @@
 yaml_bool_marker
 }
 \description{
-A control character, so it cannot collide with anything a YAML file could
-legitimately contain — including a quoted string that was meant to be the
-text \code{"true"}, which must survive as that text and not become a logical.
-}
-\details{
-A string rather than an attribute or a class because it has to survive
+A prefix rather than an attribute or a class, because it has to survive
 \code{yaml} collapsing a sequence of scalars into an atomic vector, which drops
 attributes. \verb{[true, false]} would otherwise come back as two strings.
+}
+\details{
+Deliberately plain ASCII. The first version used control characters, on the
+reasoning that nothing could collide with them. That was true, and it made
+\code{file(1)} report the whole of \code{config.R} as binary rather than as source, so
+editors and diff viewers presented the file as corrupt.
+
+Spelling it out costs nothing. Only the boolean handlers ever prepend this,
+and they only ever see scalars YAML itself resolved as booleans — a quoted
+\code{"true"} carries no boolean tag and is never marked. The one way left to
+collide is a config value that genuinely begins with this text.
 }
 \keyword{internal}

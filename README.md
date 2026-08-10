@@ -24,6 +24,7 @@
   - [Testing which covariates earn their place](#testing-which-covariates-earn-their-place)
   - [Model type](#model-type)
   - [Fitting all of them at once](#fitting-all-of-them-at-once)
+  - [Comparing two runs, and knowing when you cannot](#comparing-two-runs-and-knowing-when-you-cannot)
   - [Training and projection windows](#training-and-projection-windows)
   - [How far to trust a map](#how-far-to-trust-a-map)
   - [Reading the evaluation](#reading-the-evaluation)
@@ -1031,6 +1032,79 @@ those replicates are pooled in proportion to member weight, and the algorithm
 disagreement is reported on top in its own column — so a projection carries both
 without either standing in for the other.
 
+### Comparing two runs, and knowing when you cannot
+
+Two runs come back with two numbers — ROC AUC 0.854 against 0.892 — and nothing
+in either says whether that gap is a difference between the models or a
+difference between the stations the survey happened to visit. `compare_runs()`
+answers that, from the held-out predictions each run already stores, so it
+refits nothing:
+
+```r
+rf   <- fit_patch_model(dat, rf_config)
+gam  <- fit_patch_model(dat, gam_config)
+weak <- fit_patch_model(dat, no_ocean_config)   # jday only, no SST or SSS
+
+compare_runs(list(rf = rf, gam = gam, weak = weak))
+#>   comparison reference_score comparison_score difference   lower   upper
+#> 1        gam           0.854            0.892     0.0384  0.0141  0.0627
+#> 2       weak           0.854            0.654    -0.1997 -0.2964 -0.1030
+#>   p_value detectable n_stations
+#> 1 0.01177     0.0325        684
+#> 2 0.00458     0.1294        684
+```
+
+The first run in the list is the reference; every other is compared against it,
+and `difference` is *comparison minus reference*, so a positive number means the
+comparison won.
+
+**`detectable` is the column that stops a null result being misread.** It is the
+smallest true difference this comparison would have found, at 80% power — a
+property of the design rather than of the models. "Not significant" on its own
+conflates *these two models perform alike* with *this survey could not have told
+them apart*, and this separates them. A comparison that cannot see anything
+below 0.13 has not shown that a 0.03 gap is absent.
+
+The test is paired fold by fold, using the same Nadeau–Bengio correction as the
+[jackknife](#testing-which-covariates-earn-their-place) and for the same reason.
+It is two-sided here: leaving a covariate out has a direction worth testing
+against, but asking which of two models is better does not.
+
+Runs are matched on the station index, not on row order. Two runs with different
+covariates drop different stations to missingness, so the comparison uses the
+stations both actually scored and **warns** with the count — a run that drops
+many is telling you something.
+
+**How many stations would settle it?** `power_curve()` refits at several
+subsample sizes and traces power against `n`:
+
+```r
+power_curve(dat, list(full = config, starved = starved),
+            fractions = c(0.25, 0.5, 1), replicates = 3)
+#>   fraction n_stations replicates difference std_err df power detectable
+#> 1     0.25        171          3     -0.316  0.1169  4 0.428      0.434
+#> 2     0.50        342          3     -0.267  0.0893  4 0.632      0.332
+#> 3     1.00        684          3     -0.272  0.0339  4 1.000      0.126
+```
+
+The curve is the artefact, not any point on it. Power against sample size is
+steeply non-linear, and where a study sits on that curve is what decides whether
+another season of sampling is worth it: a comparison at 0.43 is one survey away
+from being decisive, one at 1.00 will not be improved by more stations.
+
+Everything is refitted at every size — a model trained on half the stations is a
+different model, not the same one evaluated on fewer — so this is the expensive
+function here, and it parallelises over the whole grid. Both runs see the same
+subsample and the same folds at every point, which is what keeps the comparison
+paired all the way down.
+
+Two honest limits. The target difference defaults to the one observed on the
+full data, which is an estimate rather than a truth; if the observed gap is
+itself mostly noise, the curve is answering a question about a size that may not
+be real. And these are differences in a bounded metric, so the normal-theory
+interval behind `detectable` is an approximation that gets worse as AUC
+approaches 1.
+
 ### Training and projection windows
 
 These are separate. Fitting on a long history and projecting a shorter or later
@@ -1210,6 +1284,7 @@ R/model.R               fit_patch_model()
 R/model_types.R         model_types(), permutation_importance()
 R/jackknife.R           jackknife_covariates(), the leave-one-out covariate test
 R/ensemble.R            fit_patch_ensemble(), combining several model types
+R/power.R               compare_runs(), power_curve()
 R/parallel.R            the worker pool both of those run on
 R/plot_effects.R        partial_effects(), glm_coefficients(), gam_smooth_terms()
 R/uncertainty.R         novelty_surface(), the projection interval
@@ -1438,7 +1513,13 @@ Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
 - Nadeau C, Bengio Y (2003). Inference for the generalization error. *Machine
   Learning* **52**(3), 239–281.
   [doi:10.1023/A:1024068626366](https://doi.org/10.1023/A:1024068626366) — the
-  variance correction behind the jackknife's `p_value`
+  variance correction behind the jackknife's `p_value` and `compare_runs()`
+- Hoenig JM, Heisey DM (2001). The abuse of power: the pervasive fallacy of
+  power calculations for data analysis. *The American Statistician* **55**(1),
+  19–24.
+  [doi:10.1198/000313001300339897](https://doi.org/10.1198/000313001300339897)
+  — why `compare_runs()` reports a minimum detectable difference rather than
+  the “observed power” it is often confused with
 - Fisher A, Rudin C, Dominici F (2019). All models are wrong, but many are useful:
   learning a variable's importance by studying an entire class of prediction
   models simultaneously. *Journal of Machine Learning Research* **20**(177), 1–81.
