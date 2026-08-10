@@ -347,7 +347,12 @@ test_that("options(mc.cores) sets the default worker count", {
   withr::local_envvar(c("_R_CHECK_LIMIT_CORES_" = ""))
   withr::local_options(mc.cores = 2)
 
-  expect_equal(resolve_workers(NULL, 16, quiet = TRUE), 2L)
+  # Windows cannot fork, so it is sequential whatever the option asks for. The
+  # expectation has to know that: asserting 2 everywhere passes on the
+  # platforms that fork and fails on the one that does not, which is a test
+  # describing the author's laptop rather than the function.
+  forks <- !identical(.Platform$OS.type, "windows")
+  expect_equal(resolve_workers(NULL, 16, quiet = TRUE), if (forks) 2L else 1L)
   # An explicit argument still wins over the option.
   expect_equal(resolve_workers(1, 16), 1L)
 })
