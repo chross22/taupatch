@@ -77,16 +77,22 @@ read_config_yaml <- function(path) {
 
 #' The marker that carries a boolean's source text through parsing
 #'
-#' A control character, so it cannot collide with anything a YAML file could
-#' legitimately contain — including a quoted string that was meant to be the
-#' text `"true"`, which must survive as that text and not become a logical.
-#'
-#' A string rather than an attribute or a class because it has to survive
+#' A prefix rather than an attribute or a class, because it has to survive
 #' `yaml` collapsing a sequence of scalars into an atomic vector, which drops
 #' attributes. `[true, false]` would otherwise come back as two strings.
 #'
+#' Deliberately plain ASCII. The first version used control characters, on the
+#' reasoning that nothing could collide with them. That was true, and it made
+#' `file(1)` report the whole of `config.R` as binary rather than as source, so
+#' editors and diff viewers presented the file as corrupt.
+#'
+#' Spelling it out costs nothing. Only the boolean handlers ever prepend this,
+#' and they only ever see scalars YAML itself resolved as booleans — a quoted
+#' `"true"` carries no boolean tag and is never marked. The one way left to
+#' collide is a config value that genuinely begins with this text.
+#'
 #' @keywords internal
-yaml_bool_marker <- "taupatch-bool"
+yaml_bool_marker <- "<taupatch:yaml-bool>"
 
 #' Turn marked scalars back into keys and logicals
 #'
