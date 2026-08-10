@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_effects.R
 \name{plot_gam_smooths}
 \alias{plot_gam_smooths}
-\title{Plot a GAM's fitted smooths, with fancygam}
+\title{Plot a GAM's fitted smooths, with fancyfx}
 \usage{
 plot_gam_smooths(model, vars = NULL, path = NULL)
 }
@@ -24,7 +24,7 @@ rather than reconstructed by prediction, so it carries uncertainty, which a
 partial dependence curve cannot.
 }
 \details{
-Drawn by \href{https://github.com/chross22/fancygam}{fancygam}, which is a Suggests
+Drawn by \href{https://github.com/chross22/fancyfx}{fancyfx}, which is a Suggests
 — a run without it still gets the generic partial effect curves.
 }
 \section{Why the axes read in standard deviations}{

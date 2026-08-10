@@ -113,7 +113,7 @@ test_that("a GAM reports effective degrees of freedom per smooth", {
 
 test_that("the engine object comes out for anything that plots it directly", {
   skip_on_cran()
-  # fancygam::plotSmooths() and friends take the mgcv fit, not the workflow.
+  # fancyfx::plotEffects() and friends take the mgcv fit, not the workflow.
   expect_s3_class(model_engine_fit(fitted_of_type("glm")), "glm")
   skip_if_not_installed("mgcv")
   expect_s3_class(model_engine_fit(fitted_of_type("gam")), "gam")
@@ -173,10 +173,10 @@ test_that("the smoothed variables are read back off the fitted model", {
   expect_false(any(grepl("^s\\(", smoothed)))
 })
 
-test_that("fancygam draws the fitted smooths for a GAM", {
+test_that("fancyfx draws the fitted smooths for a GAM", {
   skip_on_cran()
   skip_if_not_installed("mgcv")
-  skip_if_not_installed("fancygam")
+  skip_if_not_installed("fancyfx")
   model <- fitted_of_type("gam")
 
   plot <- suppressMessages(plot_gam_smooths(model))
@@ -194,7 +194,7 @@ test_that("fancygam draws the fitted smooths for a GAM", {
 test_that("smooth plots are drawn against the data the model actually saw", {
   skip_on_cran()
   skip_if_not_installed("mgcv")
-  skip_if_not_installed("fancygam")
+  skip_if_not_installed("fancyfx")
   model <- fitted_of_type("gam")
 
   # gratia reports the smooths in the recipe's output units, so the rug has to
@@ -207,12 +207,12 @@ test_that("smooth plots are drawn against the data the model actually saw", {
   expect_gt(abs(mean(model$model_data$SST)), 1)
 })
 
-test_that("without fancygam the run still gets its generic curves", {
+test_that("without fancyfx the run still gets its generic curves", {
   skip_on_cran()
   skip_if_not_installed("mgcv")
-  # fancygam is a Suggests: its absence removes the extra plot, not the
+  # fancyfx is a Suggests: its absence removes the extra plot, not the
   # diagnostics.
-  local_mocked_bindings(has_fancygam = function() FALSE)
+  local_mocked_bindings(has_fancyfx = function() FALSE)
   out <- tempfile("diag"); dir.create(out)
   suppressMessages(suppressWarnings(write_effect_plots(fitted_of_type("gam"), out)))
   written <- list.files(out)

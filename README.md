@@ -877,13 +877,13 @@ On top of that, each model contributes what only it can:
 | `gam` | Effective degrees of freedom per smooth. An `edf` of 1 means the smooth collapsed to a line |
 | `rf` / `brt` | None. The partial effect curve *is* their answer |
 
-With [`fancygam`](https://github.com/chross22/fancygam) installed, a GAM also
+With [`fancyfx`](https://github.com/chross22/fancyfx) installed, a GAM also
 gets its **fitted smooths** drawn — each term with its standard error band and a
 rug showing where the data actually is. Those carry uncertainty, which a partial
 dependence curve cannot:
 
 ```r
-remotes::install_github("chross22/fancygam")
+remotes::install_github("chross22/fancyfx")
 ```
 
 Their x axes read in standard deviations, because the smooths belong to the model
@@ -1182,7 +1182,7 @@ diagnostics/cv_predictions.csv     held-out predictions, for any metric not tabu
 diagnostics/partial_effects.png    what each predictor does to patch probability
 diagnostics/coefficients.png       glm only: signed effects with intervals
 diagnostics/smooth_terms.csv       gam only: effective degrees of freedom per smooth
-diagnostics/gam_smooths.png        gam only, with fancygam: fitted smooths with error bands
+diagnostics/gam_smooths.png        gam only, with fancyfx: fitted smooths with error bands
 diagnostics/members/<type>/        with model.ensemble: the above, one directory per algorithm
 projections/suitability.csv       every cell of every month: species, year, month, lon, lat, probability
                                   plus the interval and novelty columns, with projection.uncertainty
