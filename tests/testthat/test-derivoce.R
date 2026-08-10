@@ -81,6 +81,36 @@ test_that("derived covariates carry real values, not just columns", {
   expect_equal(sort(flat$SST_lag1[flat$MONTH == 7]), sort(flat$SST[flat$MONTH == 6]))
 })
 
+test_that("a lag written 'n: 2' in a config file lags by two steps", {
+  skip_if_not_installed("derivoce")
+  # YAML 1.1 resolves a bare `n` to the boolean false, keys included, so this
+  # step used to parse to a field named FALSE and fall back to a lag of one -
+  # invisibly, since a one-step lag is an ordinary thing to ask for. The config
+  # has to come off disk: built as an R list, `n` is just a name and the test
+  # would pass against a parser that loses it.
+  config <- mock_config_yaml(c(
+    "  derivoce:",
+    "    - type: lag_covariate",
+    "      vars: [SST]",
+    "      n: 2"
+  ))
+
+  spec <- config$covariates$derivoce[[1]]
+  expect_equal(spec$n, 2)
+  expect_null(spec[["FALSE"]])
+  expect_equal(derivoce_names(config), "SST_lag2")
+
+  env <- fetch_covariates(config, years = 2018, months = 6:8)
+  derived <- suppressMessages(add_derivoce_covariates(env, config))
+  flat <- sf::st_drop_geometry(derived)
+
+  # Two steps back: undefined for the first two months rather than the first,
+  # and August carries June's value.
+  expect_true(all(is.na(flat$SST_lag2[flat$MONTH %in% c(6, 7)])))
+  expect_false(any(is.na(flat$SST_lag2[flat$MONTH == 8])))
+  expect_equal(sort(flat$SST_lag2[flat$MONTH == 8]), sort(flat$SST[flat$MONTH == 6]))
+})
+
 test_that("steps chain, so a step can read what an earlier one produced", {
   skip_if_not_installed("derivoce")
   # current_speed then a gradient of `speed` is the original pipeline's uv_grad.
