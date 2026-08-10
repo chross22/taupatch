@@ -478,7 +478,7 @@ covariates:
       bottom: BOTT             # SST_BOTT_vgrad, the stratification index
     - type: lag_covariate
       vars: [CHL]
-      n: 1                     # CHL_lag1
+      "n": 1                   # CHL_lag1 - see the note on quoting below
     - type: integrate_covariate
       vars: [CHL]
       window: year             # CHL_int, the original pipeline's int_chl
@@ -487,6 +487,13 @@ covariates:
       vars: [speed]            # speed_grad, its uv_grad
     - distance_to_shore        # shore_dist, its dist
 ```
+
+**Why `"n"` is quoted.** YAML 1.1 — which is what `yaml::read_yaml()` parses —
+reads a bare `n` as the boolean `false`, along with `y`, `yes`, `no`, `on` and
+`off`. So `n: 2` names the key `FALSE` rather than `n`, and a plain parser hands
+back a step with no `n` at all, which silently falls back to a one-month lag.
+`load_config()` recovers the spelling, so an unquoted `n: 2` does work here. The
+quotes are for everything else that might open the file.
 
 Steps run in order and see the columns earlier ones produced. That is why
 `current_speed` followed by a gradient of `speed` works. `distance_to_front`,
