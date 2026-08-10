@@ -19,10 +19,12 @@ an integer worker count, at least 1
 \description{
 \code{NULL} or \code{true} means "as many as this machine can spare", which is one
 fewer than its physical cores — leaving one is what keeps the session it was
-launched from responsive. \code{false} or \code{1} is sequential.
+launched from responsive. \code{false} or \code{1} is sequential. \code{options(mc.cores=)}
+overrides the default, since that is the option R users already reach for.
 }
 \details{
-Capped at \code{n}, since a task list of six cannot use twelve workers, and forced
-to 1 on Windows, where \code{\link[=taupatch_lapply]{taupatch_lapply()}} cannot fork.
+Capped at \code{n}, since a task list of six cannot use twelve workers; forced to
+1 on Windows, where \code{\link[=taupatch_lapply]{taupatch_lapply()}} cannot fork; and capped again at
+whatever \code{\link[=core_ceiling]{core_ceiling()}} allows.
 }
 \keyword{internal}

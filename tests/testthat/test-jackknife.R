@@ -319,6 +319,39 @@ test_that("workers resolve to something runnable", {
   expect_error(resolve_workers("many", 8), "positive count")
 })
 
+test_that("a core-limited check caps the workers instead of erroring", {
+  # `R CMD check --as-cran` sets this, and under it parallel::mclapply() does
+  # not use fewer cores - it errors outright above two. A default of
+  # `cores - 1` therefore turns every jackknife into a failure on any machine
+  # with four or more cores, which is how this reached CI the first time.
+  withr::local_envvar(c("_R_CHECK_LIMIT_CORES_" = "TRUE"))
+
+  expect_equal(core_ceiling(), 2L)
+  expect_lte(resolve_workers(NULL, 16, quiet = TRUE), 2L)
+  # A configured count is capped too. The limit is not a preference.
+  expect_lte(resolve_workers(8, 16, quiet = TRUE), 2L)
+  # And sequential is still reachable.
+  expect_equal(resolve_workers(FALSE, 16), 1L)
+})
+
+test_that("the core ceiling lifts when the check variable is absent or false", {
+  withr::local_envvar(c("_R_CHECK_LIMIT_CORES_" = ""))
+  expect_identical(core_ceiling(), Inf)
+
+  withr::local_envvar(c("_R_CHECK_LIMIT_CORES_" = "false"))
+  expect_identical(core_ceiling(), Inf)
+})
+
+test_that("options(mc.cores) sets the default worker count", {
+  # The option R users already reach for, rather than a taupatch-only knob.
+  withr::local_envvar(c("_R_CHECK_LIMIT_CORES_" = ""))
+  withr::local_options(mc.cores = 2)
+
+  expect_equal(resolve_workers(NULL, 16, quiet = TRUE), 2L)
+  # An explicit argument still wins over the option.
+  expect_equal(resolve_workers(1, 16), 1L)
+})
+
 test_that("a parallel map gives the same answer as a sequential one", {
   skip_on_os("windows")
 

@@ -70,10 +70,12 @@ taupatch_lapply <- function(x, fun, workers = 1L, seed = NULL) {
 #'
 #' `NULL` or `true` means "as many as this machine can spare", which is one
 #' fewer than its physical cores — leaving one is what keeps the session it was
-#' launched from responsive. `false` or `1` is sequential.
+#' launched from responsive. `false` or `1` is sequential. `options(mc.cores=)`
+#' overrides the default, since that is the option R users already reach for.
 #'
-#' Capped at `n`, since a task list of six cannot use twelve workers, and forced
-#' to 1 on Windows, where [taupatch_lapply()] cannot fork.
+#' Capped at `n`, since a task list of six cannot use twelve workers; forced to
+#' 1 on Windows, where [taupatch_lapply()] cannot fork; and capped again at
+#' whatever [core_ceiling()] allows.
 #'
 #' @param workers the configured value: `NULL`, a logical, or a count
 #' @param n how many tasks there are to spread
@@ -82,8 +84,10 @@ taupatch_lapply <- function(x, fun, workers = 1L, seed = NULL) {
 #' @keywords internal
 resolve_workers <- function(workers = NULL, n = 1L, quiet = FALSE) {
   requested <- if (is.null(workers) || isTRUE(workers)) {
-    available <- suppressWarnings(parallel::detectCores(logical = FALSE))
-    if (is.na(available)) 1L else max(1L, available - 1L)
+    getOption("mc.cores") %||% {
+      available <- suppressWarnings(parallel::detectCores(logical = FALSE))
+      if (is.na(available)) 1L else max(1L, available - 1L)
+    }
   } else if (isFALSE(workers)) {
     1L
   } else {
@@ -102,5 +106,27 @@ resolve_workers <- function(workers = NULL, n = 1L, quiet = FALSE) {
     }
     return(1L)
   }
-  max(1L, min(requested, as.integer(n)))
+  # The ceiling is applied to a configured count as well as to the default. It
+  # is not a preference to be overridden - `parallel` refuses outright above it.
+  max(1L, min(as.integer(requested), as.integer(n), core_ceiling()))
+}
+
+#' The most workers this session is allowed to spawn
+#'
+#' `R CMD check --as-cran` sets `_R_CHECK_LIMIT_CORES_`, and under it
+#' `parallel::mclapply()` does not quietly use fewer cores — it **errors**, via
+#' `parallel:::.check_ncores()`, the moment more than two are asked for. So a
+#' default of "cores minus one" turns every jackknife into a failure on any
+#' machine with four or more cores, in exactly the context where a package is
+#' most likely to be run by someone other than its author.
+#'
+#' Capping rather than erroring is right here: the caller asked for a jackknife,
+#' not for a particular number of processes, and two workers computes the same
+#' answer as eight.
+#'
+#' @return `2L` under a core-limited check, otherwise `Inf`
+#' @keywords internal
+core_ceiling <- function() {
+  limit <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
+  if (nzchar(limit) && !identical(tolower(limit), "false")) 2L else Inf
 }
