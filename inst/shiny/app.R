@@ -1210,16 +1210,16 @@ server <- function(input, output, session) {
   # A GAM has its own partial effects, and they are better than the generic
   # ones: read out of the fitted model rather than reconstructed by prediction,
   # so they carry the uncertainty a partial dependence curve cannot.
-  use_fancygam <- reactive({
+  use_fancyfx <- reactive({
     identical(run_result()$model$type, "gam") &&
-      requireNamespace("fancygam", quietly = TRUE)
+      requireNamespace("fancyfx", quietly = TRUE)
   })
 
   output$partial_effects_note <- renderUI({
     req(run_result())
-    if (isTRUE(use_fancygam())) {
+    if (isTRUE(use_fancyfx())) {
       return(helpText("The model's own smooths, with standard error bands and a",
-                      "rug showing where the data is, drawn by fancygam. The x",
+                      "rug showing where the data is, drawn by fancyfx. The x",
                       "axes are in standard deviations because the model was",
                       "fitted on the centred and scaled predictors - turn off",
                       "'Centre and scale' to read them in the covariate's own",
@@ -1233,7 +1233,7 @@ server <- function(input, output, session) {
 
   output$partial_effects <- renderPlot({
     req(run_result())
-    if (isTRUE(use_fancygam())) {
+    if (isTRUE(use_fancyfx())) {
       return(suppressMessages(plot_gam_smooths(run_result()$model)))
     }
     effects <- run_effects()
@@ -1257,7 +1257,7 @@ server <- function(input, output, session) {
     }
     if (identical(model$type, "gam")) {
       # The smooths themselves are the partial effects panel above when
-      # fancygam is present, so they are not repeated here.
+      # fancyfx is present, so they are not repeated here.
       return(tagList(
         h4("Smooth terms"),
         helpText("Effective degrees of freedom per smooth. An edf of 1 means",

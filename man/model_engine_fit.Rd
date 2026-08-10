@@ -16,12 +16,12 @@ the engine's own fitted object
 The \code{ranger}, \code{xgb.Booster}, \code{glm}, or \code{gam} object inside the workflow,
 rather than the workflow wrapping it. Anything that plots or interrogates a
 model directly needs this rather than the tidymodels object — including
-\href{https://github.com/chross22/fancygam}{fancygam}, whose \code{plotSmooths()} takes
+\href{https://github.com/chross22/fancyfx}{fancyfx}, whose \code{plotEffects()} takes
 an \code{mgcv} fit, which is what this returns for \code{model.type: gam}.
 }
 \examples{
 \dontrun{
 # Prettier smooths than the generic partial effects can give:
-fancygam::plotSmooths(model_engine_fit(model))
+fancyfx::plotEffects(model_engine_fit(model), dat, "SST")
 }
 }
