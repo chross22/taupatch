@@ -42,10 +42,6 @@ to write for itself: cells are downsampled above \code{max.cells}, which a real
 Copernicus grid needs and the hand-built version did not do, and the
 extrapolation ramp diverges about zero in colours that survive the common
 colour vision deficiencies.
-
-\code{fancyfx} is a Suggests. Without it there is a message and no file, the same
-way \code{\link[=plot_gam_smooths]{plot_gam_smooths()}} behaves — the projection itself, and every number
-behind these panels, is written either way.
 }
 
 \seealso{

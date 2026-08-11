@@ -176,7 +176,6 @@ test_that("the smoothed variables are read back off the fitted model", {
 test_that("fancyfx draws the fitted smooths for a GAM", {
   skip_on_cran()
   skip_if_not_installed("mgcv")
-  skip_if_not_installed("fancyfx")
   model <- fitted_of_type("gam")
 
   plot <- suppressMessages(plot_gam_smooths(model))
@@ -194,7 +193,6 @@ test_that("fancyfx draws the fitted smooths for a GAM", {
 test_that("smooth plots are drawn against the data the model actually saw", {
   skip_on_cran()
   skip_if_not_installed("mgcv")
-  skip_if_not_installed("fancyfx")
   model <- fitted_of_type("gam")
 
   # gratia reports the smooths in the recipe's output units, so the rug has to
@@ -205,21 +203,6 @@ test_that("smooth plots are drawn against the data the model actually saw", {
   # Normalizing is on by default, so the baked columns are centred.
   expect_lt(abs(mean(baked$SST)), 1e-6)
   expect_gt(abs(mean(model$model_data$SST)), 1)
-})
-
-test_that("without fancyfx the run still gets its generic curves", {
-  skip_on_cran()
-  skip_if_not_installed("mgcv")
-  # fancyfx is a Suggests: its absence removes the extra plot, not the
-  # diagnostics.
-  local_mocked_bindings(has_fancyfx = function() FALSE)
-  out <- tempfile("diag"); dir.create(out)
-  suppressMessages(suppressWarnings(write_effect_plots(fitted_of_type("gam"), out)))
-  written <- list.files(out)
-
-  expect_false("gam_smooths.png" %in% written)
-  expect_true("partial_effects.png" %in% written)
-  expect_true("smooth_terms.csv" %in% written)
 })
 
 test_that("maps draw, not just build", {
@@ -269,7 +252,6 @@ test_that("abundance over the record is one continuous series", {
 
 test_that("the uncertainty panels are drawn for whichever surfaces exist", {
   skip_on_cran()
-  skip_if_not_installed("fancyfx")
   cells <- expand.grid(lon = seq(-70, -66, by = 0.5),
                        lat = seq(41, 44, by = 0.5))
   set.seed(1)
@@ -294,21 +276,6 @@ test_that("a projection with no uncertainty surfaces draws nothing", {
 
   expect_null(plot_projection_uncertainty(cells, 2018, 6, "cfin",
                                           tempfile(fileext = ".png")))
-})
-
-test_that("without fancyfx the panels are skipped, not failed", {
-  # fancyfx is a Suggests, and the projection itself plus every number behind
-  # these panels is written either way.
-  cells <- data.frame(lon = c(-70, -69), lat = c(41, 42),
-                      novelty = c(10, -5), novel_variable = c("SST", "SST"))
-  path <- tempfile(fileext = ".png")
-
-  local_mocked_bindings(has_fancyfx = function() FALSE)
-  expect_message(result <- plot_projection_uncertainty(cells, 2018, 6, "cfin",
-                                                        path),
-                 "install fancyfx")
-  expect_null(result)
-  expect_false(file.exists(path))
 })
 
 test_that("the novelty subtitle counts the cells and names the culprit", {

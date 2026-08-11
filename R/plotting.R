@@ -45,10 +45,6 @@ plot_projection <- function(predicted, year, month, species, path) {
 #' extrapolation ramp diverges about zero in colours that survive the common
 #' colour vision deficiencies.
 #'
-#' `fancyfx` is a Suggests. Without it there is a message and no file, the same
-#' way [plot_gam_smooths()] behaves — the projection itself, and every number
-#' behind these panels, is written either way.
-#'
 #' @param predicted a projection from `predict_grid()` with uncertainty columns
 #' @param year year being projected
 #' @param month month being projected
@@ -61,12 +57,6 @@ plot_projection_uncertainty <- function(predicted, year, month, species, path) {
   drawable <- intersect(c("suitability_sd", "algorithm_sd", "novelty"),
                         names(predicted))
   if (length(drawable) == 0) return(invisible(NULL))
-
-  if (!has_fancyfx()) {
-    message("  skipping the uncertainty panels: install fancyfx to draw them ",
-            "(remotes::install_github('chross22/fancyfx'))")
-    return(invisible(NULL))
-  }
 
   panels <- list()
 

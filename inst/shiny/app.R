@@ -1210,9 +1210,9 @@ server <- function(input, output, session) {
   # A GAM has its own partial effects, and they are better than the generic
   # ones: read out of the fitted model rather than reconstructed by prediction,
   # so they carry the uncertainty a partial dependence curve cannot.
+  # fancyfx is an Imports now, so this is only ever about the model type.
   use_fancyfx <- reactive({
-    identical(run_result()$model$type, "gam") &&
-      requireNamespace("fancyfx", quietly = TRUE)
+    identical(run_result()$model$type, "gam")
   })
 
   output$partial_effects_note <- renderUI({
@@ -1256,8 +1256,8 @@ server <- function(input, output, session) {
       ))
     }
     if (identical(model$type, "gam")) {
-      # The smooths themselves are the partial effects panel above when
-      # fancyfx is present, so they are not repeated here.
+      # The smooths themselves are the partial effects panel above, so they
+      # are not repeated here.
       return(tagList(
         h4("Smooth terms"),
         helpText("Effective degrees of freedom per smooth. An edf of 1 means",

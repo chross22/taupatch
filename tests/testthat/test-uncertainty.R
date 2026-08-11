@@ -42,26 +42,22 @@ test_that("malformed uncertainty settings are refused at config load", {
 
 # ---- novelty ----------------------------------------------------------------
 
-test_that("similarity is negative outside the training range and scaled by it", {
-  train <- c(0, 10)   # range of 10
+test_that("the MESS scale still reads the way the documentation says", {
+  # The arithmetic belongs to fancyfx::mess() now, and is tested there. What is
+  # checked here is the property this package documents and its readers rely
+  # on: 100 at the median, falling to 0 at the edge of the training range, and
+  # negative outside it in proportion to how far.
+  train <- data.frame(x = 0:100)
 
-  # Half a range below the minimum, and one range above the maximum.
-  expect_equal(unname(variable_similarity(-5, train)), -50)
-  expect_equal(unname(variable_similarity(20, train)), -100)
+  middle <- novelty_surface(data.frame(x = 50), train, "x")$novelty
+  edge <- novelty_surface(data.frame(x = 99), train, "x")$novelty
+  outside <- novelty_surface(data.frame(x = c(-50, 150)), train, "x")$novelty
 
-  # Inside, it is positive. The endpoints are the edge of the range, not
-  # outside it, so they are not negative.
-  expect_gte(variable_similarity(5, train), 0)
-})
-
-test_that("similarity peaks at the middle of the training data", {
-  train <- 1:101
-
-  middle <- variable_similarity(51, train)
-  edge <- variable_similarity(95, train)
-
-  expect_gt(middle, edge)
   expect_lte(middle, 100)
+  expect_gt(middle, edge)
+  expect_gte(edge, 0)
+  # Half a training range below the minimum, and half a range above the max.
+  expect_equal(outside, c(-50, -50))
 })
 
 test_that("a cell is as novel as its worst predictor, and says which", {

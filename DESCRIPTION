@@ -22,6 +22,7 @@ Depends:
 Imports:
     datamatch,
     dplyr,
+    fancyfx,
     ggplot2,
     parallel,
     parsnip,
@@ -38,7 +39,6 @@ Imports:
     yardstick
 Suggests:
     derivoce,
-    fancyfx,
     knitr,
     leaflet,
     ranger,

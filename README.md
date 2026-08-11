@@ -145,6 +145,9 @@ remotes::install_github("chross22/datamatch")
 `datamatch` no longer depends on `BigelowLab/copernicus` — it calls the
 Copernicus Marine Toolbox directly — so that package no longer needs installing.
 
+`fancyfx` draws the effect and uncertainty figures and is installed with the
+package, from the `Remotes` field, so it needs no separate step.
+
 Derived covariates (`covariates.derivoce`) additionally need:
 
 ```r
@@ -878,14 +881,10 @@ On top of that, each model contributes what only it can:
 | `gam` | Effective degrees of freedom per smooth. An `edf` of 1 means the smooth collapsed to a line |
 | `rf` / `brt` | None. The partial effect curve *is* their answer |
 
-With [`fancyfx`](https://github.com/chross22/fancyfx) installed, a GAM also
-gets its **fitted smooths** drawn — each term with its standard error band and a
-rug showing where the data actually is. Those carry uncertainty, which a partial
-dependence curve cannot:
-
-```r
-remotes::install_github("chross22/fancyfx")
-```
+A GAM also gets its **fitted smooths** drawn by
+[`fancyfx`](https://github.com/chross22/fancyfx) — each term with its standard
+error band and a rug showing where the data actually is. Those carry
+uncertainty, which a partial dependence curve cannot.
 
 Their x axes read in standard deviations, because the smooths belong to the model
 and the model was fitted on the recipe's output. Set `covariates.normalize: false`
@@ -1256,14 +1255,14 @@ diagnostics/cv_predictions.csv     held-out predictions, for any metric not tabu
 diagnostics/partial_effects.png    what each predictor does to patch probability
 diagnostics/coefficients.png       glm only: signed effects with intervals
 diagnostics/smooth_terms.csv       gam only: effective degrees of freedom per smooth
-diagnostics/gam_smooths.png        gam only, with fancyfx: fitted smooths with error bands
+diagnostics/gam_smooths.png        gam only: fitted smooths with error bands, drawn by fancyfx
 diagnostics/members/<type>/        with model.ensemble: the above, one directory per algorithm
 projections/suitability.csv       every cell of every month: species, year, month, lon, lat, probability
                                   plus the interval and novelty columns, with projection.uncertainty
 projections/suitability.grd       the same, as one raster with a layer per month (projection.write_grd)
 projections/<species>_<year>_<month>.tif      one layer, or one per surface with projection.uncertainty
 plots/<species>_<year>_<month>.png
-plots/<species>_<year>_<month>_uncertainty.png   the spread and novelty panels, with projection.uncertainty (needs fancyfx)
+plots/<species>_<year>_<month>_uncertainty.png   the spread and novelty panels, with projection.uncertainty
 covariates/monthly_means.csv       study-area mean per covariate, month, and year
 covariates/<covariate>_heatmap.png month-by-year heatmap
 bathymetry/                        marmap's cached NOAA download, if used
