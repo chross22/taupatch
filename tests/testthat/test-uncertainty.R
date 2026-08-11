@@ -169,3 +169,88 @@ test_that("the extra surfaces reach the GeoTIFF as named layers", {
   expect_true(any(grepl("_uncertainty\\.png$", plots)))
   expect_true(any(!grepl("_uncertainty\\.png$", plots)))
 })
+
+# ---- spatial sorting bias ---------------------------------------------------
+
+test_that("spatially fair folds score near 1 and sorted ones score near 0", {
+  # Built rather than fitted, so the answer is known in advance. Patches and
+  # non-patches drawn from the same places is the fair case; patches clustered
+  # away from the non-patches is the sorted one.
+  set.seed(1)
+  n <- 200
+  fair <- data.frame(lon = runif(n, -70, -66), lat = runif(n, 41, 44))
+  # Shuffled rather than alternating: `rep` of a 2-cycle across a 4-fold cycle
+  # puts every patch in the odd folds, leaving each fold with one class and
+  # nothing to compare.
+  labels <- sample(rep(c("patch", "non_patch"), length.out = n))
+  predictions <- data.frame(
+    .row = seq_len(n),
+    id = rep(paste0("Fold", 1:4), length.out = n),
+    patch = factor(labels, levels = c("patch", "non_patch"))
+  )
+
+  unbiased <- spatial_bias(list(coordinates = fair, predictions = predictions))
+  expect_equal(overall_ssb(unbiased), 1, tolerance = 0.35)
+
+  # Now put every patch in one corner and every non-patch in another.
+  sorted <- fair
+  is_patch <- predictions$patch == "patch"
+  sorted$lon[is_patch] <- runif(sum(is_patch), -70, -69.5)
+  sorted$lon[!is_patch] <- runif(sum(!is_patch), -66.5, -66)
+
+  biased <- spatial_bias(list(coordinates = sorted, predictions = predictions))
+  expect_lt(overall_ssb(biased), overall_ssb(unbiased))
+  expect_lt(overall_ssb(biased), 0.3)
+})
+
+test_that("spatial bias reports every fold as well as the overall", {
+  set.seed(2)
+  n <- 120
+  coordinates <- data.frame(lon = runif(n, -70, -66), lat = runif(n, 41, 44))
+  predictions <- data.frame(
+    .row = seq_len(n),
+    id = rep(paste0("Fold", 1:3), length.out = n),
+    patch = factor(sample(rep(c("patch", "non_patch"), length.out = n)),
+                   levels = c("patch", "non_patch"))
+  )
+
+  out <- spatial_bias(list(coordinates = coordinates, predictions = predictions))
+
+  expect_equal(nrow(out), 4)
+  expect_equal(out$fold, c("Fold1", "Fold2", "Fold3", "overall"))
+  expect_true(all(out$ssb > 0))
+})
+
+test_that("spatial bias declines to answer without coordinates", {
+  # A model fitted on a hand-built frame has none, and that is not an error.
+  predictions <- data.frame(.row = 1:4, id = "Fold1",
+                            patch = factor(c("patch", "non_patch"),
+                                           levels = c("patch", "non_patch")))
+
+  expect_null(spatial_bias(list(coordinates = NULL, predictions = predictions)))
+  expect_null(spatial_bias(list(coordinates = data.frame(lon = 1, lat = 1),
+                                predictions = NULL)))
+  expect_true(is.na(overall_ssb(NULL)))
+})
+
+test_that("the spatial bias note says what a low value means for the AUC", {
+  expect_match(spatial_bias_note(0.95), "spatially fair")
+  expect_match(spatial_bias_note(0.2), "optimistic")
+  expect_match(spatial_bias_note(NA_real_), "could not be computed")
+})
+
+test_that("the fitted model carries its coordinates and its spatial bias", {
+  skip_on_cran()
+  config <- mock_config()
+  config$model$trees <- 50
+  config$model$cv_folds <- 5
+  dat <- labeled_mock_data(config)
+
+  model <- fit_patch_model(dat, config)
+
+  expect_equal(nrow(model$coordinates), nrow(model$model_data))
+  expect_setequal(names(model$coordinates), c("lon", "lat"))
+  expect_false(is.null(model$spatial_bias))
+  # And it reaches the evaluation table, beside the metrics it qualifies.
+  expect_true("ssb" %in% model$evaluation$metric)
+})

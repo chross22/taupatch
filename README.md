@@ -1513,6 +1513,19 @@ Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
   Learning* **52**(3), 239–281.
   [doi:10.1023/A:1024068626366](https://doi.org/10.1023/A:1024068626366) — the
   variance correction behind the jackknife's `p_value` and `compare_runs()`
+- Hijmans RJ (2012). Cross-validation of species distribution models: removing
+  spatial sorting bias and calibration with a null model. *Ecology* **93**(3),
+  679–688. [doi:10.1890/11-0826.1](https://doi.org/10.1890/11-0826.1) — the
+  `ssb` row in `evals.csv`
+- Schoener TW (1968). The *Anolis* lizards of Bimini: resource partitioning in
+  a complex fauna. *Ecology* **49**(4), 704–726.
+  [doi:10.2307/1935534](https://doi.org/10.2307/1935534) — Schoener's *D* in
+  `projection_overlap()`
+- Warren DL, Glor RE, Turelli M (2008). Environmental niche equivalency versus
+  conservatism: quantitative approaches to niche evolution. *Evolution*
+  **62**(11), 2868–2883.
+  [doi:10.1111/j.1558-5646.2008.00482.x](https://doi.org/10.1111/j.1558-5646.2008.00482.x)
+  — Warren's *I*
 - Hoenig JM, Heisey DM (2001). The abuse of power: the pervasive fallacy of
   power calculations for data analysis. *The American Statistician* **55**(1),
   19–24.
