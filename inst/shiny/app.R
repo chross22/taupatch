@@ -920,7 +920,15 @@ server <- function(input, output, session) {
                                             input$bathymetry %||% character())
     config$covariates$selected <- union(input$covariates %||% character(),
                                         ingredients)
-    config$covariates$exclude <- ingredients
+    # A derived covariate can also be an ingredient: the gradient of current
+    # speed computes the speed on the way, and that column is no more a
+    # predictor than the velocity components behind it are.
+    config$covariates$exclude <- union(
+      ingredients,
+      derivoce_dependency_columns(input$derived %||% character(),
+                                  input$covariates %||% character(),
+                                  input$bathymetry %||% character())
+    )
     config$covariates$bathymetry <- input$bathymetry %||% character()
     config$covariates$climate <- input$climate %||% character()
 

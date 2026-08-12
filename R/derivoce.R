@@ -542,9 +542,10 @@ derivoce_choices <- function(selected, bathymetry = character(),
   available <- union(selected, as.character(fetchable))
 
   candidate <- function(id, label, group, step, expensive = FALSE,
-                        requires = character()) {
+                        requires = character(), depends = character()) {
     list(id = id, label = label, group = group, expensive = expensive,
-         step = step, requires = setdiff(requires, selected))
+         step = step, requires = setdiff(requires, selected),
+         depends = depends)
   }
 
   # One per fetched covariate. These are the cheap ones, and the ones a habitat
@@ -575,12 +576,29 @@ derivoce_choices <- function(selected, bathymetry = character(),
          step = function(v) list(type = "distance_to_front", var = v))
   )
 
+  # Selected covariates first, then the rest of the catalogue. Deriving from a
+  # covariate you are not modelling is an ordinary thing to want - integrated
+  # chlorophyll without chlorophyll itself, because the accumulated bloom is
+  # what feeds the animals and the instantaneous value is not - and there was
+  # no way to ask for it: the derived covariate was only offered once its
+  # source had been made a predictor, and then there was no way to take the
+  # source back out.
+  #
+  # The extra ones say so in their group rather than their label, so the cost
+  # is visible in the picker without every label carrying a parenthesis.
   out <- list()
   for (entry in per_covariate) {
     for (v in selected) {
       out[[length(out) + 1]] <- candidate(
         paste0(v, entry$suffix), sprintf(entry$label, v), entry$group,
         entry$step(v), entry$expensive
+      )
+    }
+    for (v in setdiff(available, selected)) {
+      out[[length(out) + 1]] <- candidate(
+        paste0(v, entry$suffix), sprintf(entry$label, v),
+        paste0(entry$group, " (downloads ", v, ")"),
+        entry$step(v), entry$expensive, requires = v
       )
     }
   }
@@ -601,6 +619,28 @@ derivoce_choices <- function(selected, bathymetry = character(),
     out[[length(out) + 1]] <- candidate(
       "EKE", "Eddy kinetic energy", "Flow",
       list(type = "eke"), requires = c("UO", "VO")
+    )
+    # Steps see what earlier steps produced, so a gradient can be taken of the
+    # speed rather than of the two components it came from. That is the
+    # quantity a front in the flow actually is - the components can each be
+    # changing steeply while the speed is constant, which is a turn and not a
+    # shear - and it is the original pipeline's uv_grad.
+    #
+    # `depends` rather than `requires` because what is needed is another step,
+    # not another download: picking this pulls current_speed in whether or not
+    # the speed itself was asked for as a predictor.
+    for (entry in per_covariate) {
+      if (entry$type == "distance_to_front") next
+      out[[length(out) + 1]] <- candidate(
+        paste0("speed", entry$suffix), sprintf(entry$label, "current speed"),
+        "Flow", entry$step("speed"), entry$expensive,
+        requires = c("UO", "VO"), depends = "speed"
+      )
+    }
+    out[[length(out) + 1]] <- candidate(
+      "EKE_grad", "Spatial gradient of eddy kinetic energy (per km)", "Flow",
+      list(type = "horizontal_gradient", vars = "EKE"),
+      requires = c("UO", "VO"), depends = "EKE"
     )
     # Backward rather than forward, because backward finds the attracting
     # structures where water converges and plankton accumulate, which is the
@@ -647,8 +687,38 @@ derivoce_steps_for <- function(ids, selected, bathymetry = character()) {
   if (length(ids) == 0) return(list())
 
   choices <- derivoce_choices(selected, bathymetry)
-  chosen <- Filter(function(x) x$id %in% ids, choices)
+  chosen <- Filter(function(x) x$id %in% with_dependencies(ids, choices),
+                   choices)
   lapply(chosen, function(x) x$step)
+}
+
+#' The chosen derived covariates, plus the ones they are computed from
+#'
+#' A gradient of current speed needs the speed, and the speed is itself a
+#' derived covariate rather than a download. Choosing the gradient therefore
+#' has to pull in the step that produces what it reads — otherwise the config
+#' asks derivoce for a gradient of a column that was never computed.
+#'
+#' Order is not this function's problem. `derivoce_choices()` lists a
+#' dependency before anything that depends on it, and steps are emitted in that
+#' order, so `current_speed` runs before the gradient of `speed` without
+#' anything having to sort them.
+#'
+#' @param ids chosen derived covariate ids
+#' @param choices the [derivoce_choices()] list
+#' @return `ids` with any dependencies added
+#' @keywords internal
+with_dependencies <- function(ids, choices) {
+  needed <- ids
+  repeat {
+    depends <- unlist(lapply(
+      Filter(function(x) x$id %in% needed, choices),
+      function(x) x$depends %||% character()
+    ))
+    grown <- union(needed, depends %||% character())
+    if (length(grown) == length(needed)) return(grown)
+    needed <- grown
+  }
 }
 
 #' Covariates a set of derived choices needs fetching
@@ -670,6 +740,47 @@ derivoce_required_inputs <- function(ids, selected, bathymetry = character()) {
   if (length(ids) == 0) return(character())
 
   choices <- derivoce_choices(selected, bathymetry)
-  chosen <- Filter(function(x) x$id %in% ids, choices)
+  chosen <- Filter(function(x) x$id %in% with_dependencies(ids, choices),
+                   choices)
   unique(unlist(lapply(chosen, function(x) x$requires))) %||% character()
+}
+
+#' Derived columns pulled in only as ingredients
+#'
+#' Choosing the gradient of current speed computes the speed on the way, and
+#' that column then sits in the modelling data looking exactly like one that was
+#' asked for. It was not: the ingredient of a derived covariate is no more a
+#' predictor than the velocity components behind an FSLE are.
+#'
+#' This names the derived columns a selection produced without anyone choosing
+#' them, so they can go into `covariates.exclude` alongside the downloads that
+#' [derivoce_required_inputs()] finds. A column named here is still computed and
+#' still available to anything later that reads it; it just does not become a
+#' predictor.
+#'
+#' @param ids chosen derived covariate ids
+#' @param selected time-varying covariate names
+#' @param bathymetry static seafloor covariate names
+#' @return character vector of derived column names, possibly empty
+#' @examples
+#' # Asking for the gradient of current speed computes the speed too, and that
+#' # is an ingredient rather than a request.
+#' derivoce_dependency_columns("speed_grad", c("SST", "SSS"))
+#'
+#' # Asking for both makes the speed a request, so it is not excluded.
+#' derivoce_dependency_columns(c("speed", "speed_grad"), c("SST", "SSS"))
+#' @seealso [derivoce_required_inputs()], which does the same for downloads
+#' @export
+derivoce_dependency_columns <- function(ids, selected,
+                                        bathymetry = character()) {
+  if (length(ids) == 0) return(character())
+
+  choices <- derivoce_choices(selected, bathymetry)
+  pulled <- setdiff(with_dependencies(ids, choices), ids)
+  if (length(pulled) == 0) return(character())
+
+  # The id of a per-covariate candidate is the column it produces, which is
+  # what `exclude` has to name.
+  chosen <- Filter(function(x) x$id %in% pulled, choices)
+  unique(vapply(chosen, function(x) x$id, character(1)))
 }

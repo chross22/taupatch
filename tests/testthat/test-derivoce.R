@@ -274,3 +274,66 @@ test_that("a run with no derivoce block is untouched", {
   env <- fetch_covariates(config, years = 2018, months = 6)
   expect_identical(add_derivoce_covariates(env, config), env)
 })
+
+test_that("a derived covariate is offered whether or not its source is modelled", {
+  # Integrated chlorophyll without chlorophyll itself is an ordinary thing to
+  # want - the accumulated bloom is what feeds the animals, the instantaneous
+  # value is not - and it used to be unaskable: the derived form appeared only
+  # once its source was a predictor, and then the source could not be removed.
+  ids <- vapply(derivoce_choices(c("SST", "SSS")), function(x) x$id,
+                character(1))
+
+  expect_true("CHL_int" %in% ids)
+  expect_true("CHL_lag1" %in% ids)
+  expect_true("SST_int" %in% ids)
+  # And the source is fetched, so it can be excluded from the predictors.
+  expect_equal(derivoce_required_inputs("CHL_int", c("SST", "SSS")), "CHL")
+  # A source that *is* selected needs no extra download.
+  expect_length(derivoce_required_inputs("SST_int", c("SST", "SSS")), 0)
+})
+
+test_that("the extra choices say in their group that they cost a download", {
+  choices <- derivoce_choices(c("SST"))
+  group_of <- function(id) {
+    Filter(function(x) x$id == id, choices)[[1]]$group
+  }
+
+  expect_equal(group_of("SST_int"), "Temporal")
+  expect_match(group_of("CHL_int"), "downloads CHL")
+})
+
+test_that("current speed can be differentiated, not just its components", {
+  # The gradient of the speed is the quantity a front in the flow is. The
+  # components can each be changing steeply while the speed is constant, which
+  # is a turn rather than a shear.
+  ids <- vapply(derivoce_choices(c("SST")), function(x) x$id, character(1))
+  expect_true("speed_grad" %in% ids)
+  expect_true("EKE_grad" %in% ids)
+
+  steps <- derivoce_steps_for("speed_grad", c("SST"))
+
+  # The speed has to be computed before it can be differentiated, and the
+  # config is read in order.
+  expect_equal(vapply(steps, function(s) s$type, character(1)),
+               c("current_speed", "horizontal_gradient"))
+  expect_equal(steps[[2]]$vars, "speed")
+  expect_setequal(derivoce_required_inputs("speed_grad", c("SST")),
+                  c("UO", "VO"))
+})
+
+test_that("a dependency pulled in on the way is not made a predictor", {
+  expect_equal(derivoce_dependency_columns("speed_grad", c("SST")), "speed")
+  # Unless it was asked for in its own right.
+  expect_length(derivoce_dependency_columns(c("speed", "speed_grad"), c("SST")),
+                0)
+  # A download is not a derived column; derivoce_required_inputs covers those.
+  expect_length(derivoce_dependency_columns("CHL_int", c("SST")), 0)
+  expect_length(derivoce_dependency_columns(character(), c("SST")), 0)
+})
+
+test_that("asking for a derived covariate twice over does not duplicate a step", {
+  steps <- derivoce_steps_for(c("speed", "speed_grad"), c("SST"))
+
+  expect_equal(sum(vapply(steps, function(s) s$type, character(1)) ==
+                     "current_speed"), 1)
+})

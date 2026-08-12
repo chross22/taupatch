@@ -31,6 +31,17 @@ surfaces; \strong{0} is no overlap at all. There is no threshold at which two
 niches become "the same" — the number is a description, and what counts as
 close depends on what the maps are for.
 }
+\section{Read them as high numbers}{
+
+Both statistics compare the suitability \emph{distributions} cell by cell after
+normalising them, so they run high. Two surfaces of independent random noise
+over the same grid score around 0.7 on \emph{D} and 0.9 on \emph{I} — not because they
+agree about anything, but because both spread their probability over the
+same cells in similar proportions. Treat those as the floor for surfaces of
+this shape rather than reading 0.9 as near-identity, and compare overlaps
+against each other rather than against 1.
+}
+
 \section{What it is good for}{
 
 Two questions, mostly. \emph{Do two species occupy the same habitat?} — run
