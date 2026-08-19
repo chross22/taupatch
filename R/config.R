@@ -339,6 +339,23 @@ validate_date_range <- function(years, months, label) {
     stop(label, ".months must be [start, end] within 1-12 with start <= end.",
          call. = FALSE)
   }
+
+  # A window running past the present asks for months no covariate can exist
+  # for, so the run would fetch nothing and project onto nothing. That is worth
+  # catching while reading the config rather than after the Copernicus download
+  # for the training window has already been paid for. The month has to have
+  # begun to hold anything at all.
+  latest <- as.Date(sprintf("%04d-%02d-01", years[2], months[2]))
+  if (latest > Sys.Date()) {
+    stop(label, " runs to ", format(latest, "%Y-%m"),
+         ", which has not happened yet.\n  No covariate can exist for it, so ",
+         "there would be nothing to ", if (label == "projection") {
+           "project onto"
+         } else {
+           "fit on"
+         }, ". Today is ", format(Sys.Date()), ".", call. = FALSE)
+  }
+
   invisible(TRUE)
 }
 
