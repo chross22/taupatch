@@ -111,7 +111,7 @@ add_mock_stage_columns <- function(dat) {
 
 #' Generate synthetic environmental covariates
 #'
-#' Produces the same shape `datamatch::accessEnvDat()` returns, so the pipeline
+#' Produces the same shape `datamatch::accessCopernicus()` returns, so the pipeline
 #' runs identically against mock and Copernicus data. Covariates carry the same
 #' latitudinal and seasonal structure planted in the mock abundances, so the model
 #' has something real to learn.

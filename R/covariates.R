@@ -1,7 +1,7 @@
 #' Fetch environmental covariates
 #'
 #' Dispatches on `covariates.source` in the config. The `"copernicus"` source
-#' fetches from Copernicus Marine via `datamatch::accessEnvDat()`; `"local_netcdf"`
+#' fetches from Copernicus Marine via `datamatch::accessCopernicus()`; `"local_netcdf"`
 #' reads a directory of NetCDF files already on disk; `"mock"` generates synthetic
 #' covariates so the pipeline can run without network access.
 #'
@@ -28,7 +28,7 @@ fetch_covariates <- function(config, years = NULL, months = NULL) {
 
 #' Fetch covariates from Copernicus Marine
 #'
-#' One `datamatch::accessEnvDat()` call per dataset entry in
+#' One `datamatch::accessCopernicus()` call per dataset entry in
 #' `covariates.copernicus`, joined on grid point and date. This replaces the ~200
 #' lines of hardcoded per-variable raster paths in `original/load_covars.R`.
 #'
@@ -64,7 +64,7 @@ fetch_covariates_copernicus <- function(config, years, months) {
     if (!is.null(spec$n_workers %||% config$covariates$n_workers)) {
       args$n_workers <- spec$n_workers %||% config$covariates$n_workers
     }
-    fetched <- do.call(datamatch::accessEnvDat, args)
+    fetched <- do.call(datamatch::accessCopernicus, args)
 
     # Present the columns under the covariate names the config asked for rather
     # than Copernicus variable codes, so the model's predictors read as SST/CHL.
@@ -145,7 +145,7 @@ NULL
 #' two. A grid finer in one direction than the other is still limited by its
 #' coarse direction, so that is what decides which source is the finer of two.
 #'
-#' @param env_dat an `sf` POINT object from `datamatch::accessEnvDat()`
+#' @param env_dat an `sf` POINT object from `datamatch::accessCopernicus()`
 #' @return the coarser of the longitude and latitude spacings
 #' @keywords internal
 grid_spacing <- function(env_dat) {

@@ -240,3 +240,32 @@ test_that("study area and covariate source are validated", {
   config$covariates$source <- "ftp"
   expect_error(validate_covariates(config), "must be one of")
 })
+
+# A projection window running past the present asks for months no covariate can
+# exist for: the run fetches nothing for them and projects onto nothing. Caught
+# while reading the config, rather than after the training window's Copernicus
+# download has already been paid for.
+
+test_that("a projection window past the present is refused", {
+  future_year <- as.integer(format(Sys.Date(), "%Y")) + 5
+  expect_error(validate_date_range(c(future_year, future_year), c(1, 12), "projection"),
+               "has not happened yet")
+  # The message says which section, and what there would be nothing to do.
+  msg <- tryCatch(validate_date_range(c(future_year, future_year), c(1, 12), "projection"),
+                  error = conditionMessage)
+  expect_match(msg, "project onto", fixed = TRUE)
+})
+
+test_that("a training window past the present is refused too", {
+  future_year <- as.integer(format(Sys.Date(), "%Y")) + 5
+  msg <- tryCatch(validate_date_range(c(future_year, future_year), c(1, 12), "dates"),
+                  error = conditionMessage)
+  expect_match(msg, "fit on", fixed = TRUE)
+})
+
+test_that("a window ending in the current month is still allowed", {
+  # The point is to catch what cannot exist, not to narrow what can be asked for.
+  now <- Sys.Date()
+  expect_true(validate_date_range(c(2003, as.integer(format(now, "%Y"))),
+                                  c(1, as.integer(format(now, "%m"))), "projection"))
+})

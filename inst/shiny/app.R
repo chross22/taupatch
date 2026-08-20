@@ -920,7 +920,15 @@ server <- function(input, output, session) {
                                             input$bathymetry %||% character())
     config$covariates$selected <- union(input$covariates %||% character(),
                                         ingredients)
-    config$covariates$exclude <- ingredients
+    # A derived covariate can also be an ingredient: the gradient of current
+    # speed computes the speed on the way, and that column is no more a
+    # predictor than the velocity components behind it are.
+    config$covariates$exclude <- union(
+      ingredients,
+      derivoce_dependency_columns(input$derived %||% character(),
+                                  input$covariates %||% character(),
+                                  input$bathymetry %||% character())
+    )
     config$covariates$bathymetry <- input$bathymetry %||% character()
     config$covariates$climate <- input$climate %||% character()
 
@@ -1210,9 +1218,9 @@ server <- function(input, output, session) {
   # A GAM has its own partial effects, and they are better than the generic
   # ones: read out of the fitted model rather than reconstructed by prediction,
   # so they carry the uncertainty a partial dependence curve cannot.
+  # fancyfx is an Imports now, so this is only ever about the model type.
   use_fancyfx <- reactive({
-    identical(run_result()$model$type, "gam") &&
-      requireNamespace("fancyfx", quietly = TRUE)
+    identical(run_result()$model$type, "gam")
   })
 
   output$partial_effects_note <- renderUI({
@@ -1256,8 +1264,8 @@ server <- function(input, output, session) {
       ))
     }
     if (identical(model$type, "gam")) {
-      # The smooths themselves are the partial effects panel above when
-      # fancyfx is present, so they are not repeated here.
+      # The smooths themselves are the partial effects panel above, so they
+      # are not repeated here.
       return(tagList(
         h4("Smooth terms"),
         helpText("Effective degrees of freedom per smooth. An edf of 1 means",

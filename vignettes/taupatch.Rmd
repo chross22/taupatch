@@ -542,3 +542,253 @@ implements; the [References section of the
 README](https://github.com/chross22/taupatch#references) groups everything else
 so you can pick out the subset a particular run actually used. Each function's
 own help page carries the references relevant to it.
+
+## References
+
+taupatch is mostly plumbing between other people's data and other people's
+methods, and the obligation to cite travels with those rather than with this
+package. **Cite whichever of these your run actually used** — the groupings below
+are meant to make that easy to work out. Each function's own `?help` carries the
+references relevant to it, and `covariate_info()` names the source of every
+covariate at runtime.
+
+### The model this implements
+
+- Ross CH, Runge JA, Roberts JJ, Brady DC, Tupper B, Record NR (2023). Estimating
+  North Atlantic right whale prey based on *Calanus finmarchicus* thresholds.
+  *Marine Ecology Progress Series* **703**, 1–16.
+  [doi:10.3354/meps14204](https://doi.org/10.3354/meps14204)
+- Elith J, Leathwick JR (2009). Species distribution models: ecological
+  explanation and prediction across space and time. *Annual Review of Ecology,
+  Evolution, and Systematics* **40**, 677–697.
+  [doi:10.1146/annurev.ecolsys.110308.120159](https://doi.org/10.1146/annurev.ecolsys.110308.120159)
+- Thuiller W, Lafourcade B, Engler R, Araújo MB (2009). BIOMOD – a platform for
+  ensemble forecasting of species distributions. *Ecography* **32**(3), 369–373.
+  [doi:10.1111/j.1600-0587.2008.05742.x](https://doi.org/10.1111/j.1600-0587.2008.05742.x)
+  — the framework the archived `original/` pipeline was built on, replaced here by
+  tidymodels
+
+### Station data
+
+Not distributed with this package. A run on the NOAA export should cite it:
+
+- NOAA National Marine Fisheries Service, Northeast Fisheries Science Center.
+  *Zooplankton and ichthyoplankton abundance and distribution in the North
+  Atlantic collected by the Ecosystem Monitoring (EcoMon) Project*. NOAA National
+  Centers for Environmental Information, NCEI Accession 0187513.
+  <https://www.ncei.noaa.gov/archive/accession/0187513>
+
+### Environmental covariates
+
+Fetched through [datamatch](https://github.com/chross22/datamatch), whose
+[reference list](https://github.com/chross22/datamatch#references) is the complete
+one for the data sources. The three products this package's catalog draws on:
+
+- **Global Ocean Physics Reanalysis** (GLORYS12V1) — `SST`, `SSS`, `BOTT`, `UO`,
+  `VO`, `SSH`, `MLD`, `SIC`. E.U. Copernicus Marine Service Information.
+  [doi:10.48670/moi-00021](https://doi.org/10.48670/moi-00021)
+- **Global Ocean Colour** (Copernicus-GlobColour) — satellite `CHL`, `PP`,
+  `DIATO`, `DINO`. E.U. Copernicus Marine Service Information.
+  [doi:10.48670/moi-00281](https://doi.org/10.48670/moi-00281)
+- **Global Ocean Biogeochemistry Hindcast** — `NO3`, `PO4`, `O2`, `PH`,
+  `CHL_MODEL`, `NPP_MODEL`. E.U. Copernicus Marine Service Information.
+  [doi:10.48670/moi-00019](https://doi.org/10.48670/moi-00019)
+- E.U. Copernicus Marine Service. *Copernicus Marine Toolbox*
+  (`copernicusmarine`). <https://toolbox-docs.marine.copernicus.eu/> — how the
+  above are downloaded. Mercator Ocean International publishes no DOI for the
+  toolbox itself, so credit it by name; the citation that matters is the
+  product's.
+
+Seafloor terrain, for `covariates.bathymetry`:
+
+- NOAA National Centers for Environmental Information (2022). *ETOPO 2022
+  15 Arc-Second Global Relief Model*.
+  [doi:10.25921/fd45-gt74](https://doi.org/10.25921/fd45-gt74)
+- Pante E, Simon-Bouhet B (2013). marmap: A package for importing, plotting and
+  analyzing bathymetric and topographic data in R. *PLoS ONE* **8**(9), e73051.
+  [doi:10.1371/journal.pone.0073051](https://doi.org/10.1371/journal.pone.0073051)
+
+Climate indices, when `covariates.climate` is set, come from
+[datamatch](https://github.com/chross22/datamatch#climate-indices); two of the six
+(`LCR`, `AMOC`) are the published output of specific work and are cited there.
+
+### Derived covariates
+
+Computed by [derivoce](https://github.com/chross22/derivoce), whose
+[reference list](https://github.com/chross22/derivoce#references) is the complete
+one. The methods behind the steps this README shows:
+
+- Belkin IM, O'Reilly JE (2009). An algorithm for oceanic front detection in
+  chlorophyll and SST satellite imagery. *Journal of Marine Systems* **78**(3),
+  319–326.
+  [doi:10.1016/j.jmarsys.2008.11.018](https://doi.org/10.1016/j.jmarsys.2008.11.018)
+  — `distance_to_front`
+- d'Ovidio F, Fernández V, Hernández-García E, López C (2004). Mixing structures
+  in the Mediterranean Sea from finite-size Lyapunov exponents. *Geophysical
+  Research Letters* **31**(17).
+  [doi:10.1029/2004GL020328](https://doi.org/10.1029/2004GL020328) — `fsle`
+- Haller G (2015). Lagrangian coherent structures. *Annual Review of Fluid
+  Mechanics* **47**, 137–162.
+  [doi:10.1146/annurev-fluid-010313-141322](https://doi.org/10.1146/annurev-fluid-010313-141322)
+  — `ftle`, `fsle`
+
+Coastlines for `distance_to_shore` are [Natural
+Earth](https://www.naturalearthdata.com/), public domain, via `rnaturalearth`.
+
+### Transformations
+
+- Box GEP, Cox DR (1964). An analysis of transformations. *Journal of the Royal
+  Statistical Society: Series B* **26**(2), 211–252.
+  [doi:10.1111/j.2517-6161.1964.tb00553.x](https://doi.org/10.1111/j.2517-6161.1964.tb00553.x)
+  — `boxcox`
+- Field JG, Clarke KR, Warwick RM (1982). A practical strategy for analysing
+  multispecies distribution patterns. *Marine Ecology Progress Series* **8**,
+  37–52. [doi:10.3354/meps008037](https://doi.org/10.3354/meps008037) — the fourth
+  root as the plankton standard
+- Yeo I-K, Johnson RA (2000). A new family of power transformations to improve
+  normality or symmetry. *Biometrika* **87**(4), 954–959.
+  [doi:10.1093/biomet/87.4.954](https://doi.org/10.1093/biomet/87.4.954) —
+  `yeojohnson`
+
+### Models
+
+- Araújo MB, New M (2007). Ensemble forecasting of species distributions.
+  *Trends in Ecology & Evolution* **22**(1), 42–47.
+  [doi:10.1016/j.tree.2006.09.010](https://doi.org/10.1016/j.tree.2006.09.010) —
+  why an ensemble of algorithms rather than a chosen best one
+- Breiman L (2001). Random forests. *Machine Learning* **45**(1), 5–32.
+  [doi:10.1023/A:1010933404324](https://doi.org/10.1023/A:1010933404324) — `rf`,
+  and the origin of permutation importance
+- Chen T, Guestrin C (2016). XGBoost: a scalable tree boosting system.
+  *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge
+  Discovery and Data Mining*, 785–794.
+  [doi:10.1145/2939672.2939785](https://doi.org/10.1145/2939672.2939785) — the
+  `brt` engine
+- Elith J, Leathwick JR, Hastie T (2008). A working guide to boosted regression
+  trees. *Journal of Animal Ecology* **77**(4), 802–813.
+  [doi:10.1111/j.1365-2656.2008.01390.x](https://doi.org/10.1111/j.1365-2656.2008.01390.x)
+- Friedman JH (2001). Greedy function approximation: a gradient boosting machine.
+  *Annals of Statistics* **29**(5), 1189–1232.
+  [doi:10.1214/aos/1013203451](https://doi.org/10.1214/aos/1013203451) — `brt`, and
+  the partial dependence plot
+- Hastie T, Tibshirani R (1986). Generalized additive models. *Statistical
+  Science* **1**(3), 297–310.
+  [doi:10.1214/ss/1177013604](https://doi.org/10.1214/ss/1177013604) — `gam`
+- Marmion M, Parviainen M, Luoto M, Heikkinen RK, Thuiller W (2009). Evaluation
+  of consensus methods in predictive species distribution modelling. *Diversity
+  and Distributions* **15**(1), 59–69.
+  [doi:10.1111/j.1472-4642.2008.00491.x](https://doi.org/10.1111/j.1472-4642.2008.00491.x)
+  — the ensemble combination rules, compared against each other
+- Marra G, Wood SN (2011). Practical variable selection for generalized additive
+  models. *Computational Statistics & Data Analysis* **55**(7), 2372–2387.
+  [doi:10.1016/j.csda.2011.02.004](https://doi.org/10.1016/j.csda.2011.02.004) —
+  `select_features` and the `ts` basis
+- McCullagh P, Nelder JA (1989). *Generalized Linear Models*, 2nd edition. Chapman
+  and Hall. [doi:10.1007/978-1-4899-3242-6](https://doi.org/10.1007/978-1-4899-3242-6)
+  — `glm`
+- Wood SN (2011). Fast stable restricted maximum likelihood and marginal
+  likelihood estimation of semiparametric generalized linear models. *Journal of
+  the Royal Statistical Society: Series B* **73**(1), 3–36.
+  [doi:10.1111/j.1467-9868.2010.00749.x](https://doi.org/10.1111/j.1467-9868.2010.00749.x)
+  — `model.method`
+- Wood SN (2017). *Generalized Additive Models: An Introduction with R*, 2nd
+  edition. Chapman and Hall/CRC.
+  [doi:10.1201/9781315370279](https://doi.org/10.1201/9781315370279) — the `mgcv`
+  reference
+- Wright MN, Ziegler A (2017). ranger: a fast implementation of random forests for
+  high dimensional data in C++ and R. *Journal of Statistical Software* **77**(1),
+  1–17. [doi:10.18637/jss.v077.i01](https://doi.org/10.18637/jss.v077.i01) — the
+  `rf` engine
+
+### Evaluation and diagnostics
+
+- Allouche O, Tsoar A, Kadmon R (2006). Assessing the accuracy of species
+  distribution models: prevalence, kappa and the true skill statistic (TSS).
+  *Journal of Applied Ecology* **43**(6), 1223–1232.
+  [doi:10.1111/j.1365-2664.2006.01214.x](https://doi.org/10.1111/j.1365-2664.2006.01214.x)
+  — `tss`, and the cutoff that maximises it
+- Bengio Y, Grandvalet Y (2004). No unbiased estimator of the variance of k-fold
+  cross-validation. *Journal of Machine Learning Research* **5**, 1089–1105.
+  <https://jmlr.org/papers/v5/grandvalet04a.html> — why the jackknife's test
+  needs a variance correction rather than a better estimator
+- Bouckaert RR, Frank E (2004). Evaluating the replicability of significance
+  tests for comparing learning algorithms. *Advances in Knowledge Discovery and
+  Data Mining* (PAKDD 2004), Lecture Notes in Computer Science **3056**, 3–12.
+  Springer. — the correction applied to k-fold specifically. Listed without its
+  DOI on purpose: a Springer chapter identifier contains an underscore, which
+  the citation checker's DOI pattern reads as the end of the identifier
+- Dietterich TG (1998). Approximate statistical tests for comparing supervised
+  classification learning algorithms. *Neural Computation* **10**(7), 1895–1923.
+  [doi:10.1162/089976698300017197](https://doi.org/10.1162/089976698300017197) —
+  the inflated Type I error of the uncorrected paired test
+- Elith J, Phillips SJ, Hastie T, Dudík M, Chee YE, Yates CJ (2011). A
+  statistical explanation of MaxEnt for ecologists. *Diversity and
+  Distributions* **17**(1), 43–57.
+  [doi:10.1111/j.1472-4642.2010.00725.x](https://doi.org/10.1111/j.1472-4642.2010.00725.x)
+  — the leave-one-out / only-one jackknife pair
+- Nadeau C, Bengio Y (2003). Inference for the generalization error. *Machine
+  Learning* **52**(3), 239–281.
+  [doi:10.1023/A:1024068626366](https://doi.org/10.1023/A:1024068626366) — the
+  variance correction behind the jackknife's `p_value` and `compare_runs()`
+- Hijmans RJ (2012). Cross-validation of species distribution models: removing
+  spatial sorting bias and calibration with a null model. *Ecology* **93**(3),
+  679–688. [doi:10.1890/11-0826.1](https://doi.org/10.1890/11-0826.1) — the
+  `ssb` row in `evals.csv`
+- Schoener TW (1968). The *Anolis* lizards of Bimini: resource partitioning in
+  a complex fauna. *Ecology* **49**(4), 704–726.
+  [doi:10.2307/1935534](https://doi.org/10.2307/1935534) — Schoener's *D* in
+  `projection_overlap()`
+- Warren DL, Glor RE, Turelli M (2008). Environmental niche equivalency versus
+  conservatism: quantitative approaches to niche evolution. *Evolution*
+  **62**(11), 2868–2883.
+  [doi:10.1111/j.1558-5646.2008.00482.x](https://doi.org/10.1111/j.1558-5646.2008.00482.x)
+  — Warren's *I*
+- Hoenig JM, Heisey DM (2001). The abuse of power: the pervasive fallacy of
+  power calculations for data analysis. *The American Statistician* **55**(1),
+  19–24.
+  [doi:10.1198/000313001300339897](https://doi.org/10.1198/000313001300339897)
+  — why `compare_runs()` reports a minimum detectable difference rather than
+  the “observed power” it is often confused with
+- Fisher A, Rudin C, Dominici F (2019). All models are wrong, but many are useful:
+  learning a variable's importance by studying an entire class of prediction
+  models simultaneously. *Journal of Machine Learning Research* **20**(177), 1–81.
+  <https://jmlr.org/papers/v20/18-760.html> — permutation importance as a
+  model-agnostic quantity, which is what makes it comparable across the four types
+- Saito T, Rehmsmeier M (2015). The precision-recall plot is more informative than
+  the ROC plot when evaluating binary classifiers on imbalanced datasets. *PLoS
+  ONE* **10**(3), e0118432.
+  [doi:10.1371/journal.pone.0118432](https://doi.org/10.1371/journal.pone.0118432)
+  — `pr_auc`
+- Elith J, Kearney M, Phillips S (2010). The art of modelling range-shifting
+  species. *Methods in Ecology and Evolution* **1**(4), 330–342.
+  [doi:10.1111/j.2041-210X.2010.00036.x](https://doi.org/10.1111/j.2041-210X.2010.00036.x)
+  — the multivariate environmental similarity surface behind `novelty`
+- Sofaer HR, Hoeting JA, Jarnevich CS (2019). The area under the precision-recall
+  curve as a performance metric for rare binary events. *Methods in Ecology and
+  Evolution* **10**(4), 565–577.
+  [doi:10.1111/2041-210X.13140](https://doi.org/10.1111/2041-210X.13140)
+
+### Software this is built on
+
+- Chang W, Cheng J, Allaire JJ, Sievert C, Schloerke B, Xie Y, Allen J, McPherson
+  J, Dipert A, Borges B. *shiny: Web Application Framework for R*.
+  [doi:10.32614/CRAN.package.shiny](https://doi.org/10.32614/CRAN.package.shiny) —
+  `run_taupatch_app()`, with `leaflet` and `shinyFiles`
+- Garnier S, Ross N, Rudis R, Camargo AP, Sciaini M, Scherer C. *viridisLite:
+  Colorblind-Friendly Color Maps (Lite Version)*.
+  [doi:10.32614/CRAN.package.viridisLite](https://doi.org/10.32614/CRAN.package.viridisLite)
+  — the magma scale used throughout, from the colormaps designed for matplotlib by
+  Stéfan van der Walt and Nathaniel Smith
+- Hijmans RJ. *terra: Spatial Data Analysis*.
+  [doi:10.32614/CRAN.package.terra](https://doi.org/10.32614/CRAN.package.terra) —
+  the projection rasters
+- Kuhn M, Wickham H (2020). *Tidymodels: a collection of packages for modeling and
+  machine learning using tidyverse principles*. <https://www.tidymodels.org> —
+  `parsnip`, `recipes`, `rsample`, `tune`, `workflows`, `yardstick`
+- Pebesma E (2018). Simple features for R: standardized support for spatial vector
+  data. *The R Journal* **10**(1), 439–446.
+  [doi:10.32614/RJ-2018-009](https://doi.org/10.32614/RJ-2018-009) — `sf`
+- Wickham H (2016). *ggplot2: Elegant Graphics for Data Analysis*. Springer.
+  [doi:10.1007/978-3-319-24277-4](https://doi.org/10.1007/978-3-319-24277-4)
+
+`citation()` works on any of the R packages above.

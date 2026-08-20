@@ -2,7 +2,7 @@
 % Please edit documentation in R/plotting.R
 \name{plot_projection_uncertainty}
 \alias{plot_projection_uncertainty}
-\title{Plot how far a monthly projection can be trusted}
+\title{Draw the layers that say how far to trust a projection}
 \usage{
 plot_projection_uncertainty(predicted, year, month, species, path)
 }
@@ -21,23 +21,29 @@ plot_projection_uncertainty(predicted, year, month, species, path)
 \code{path} invisibly, or \code{NULL} when there is nothing to draw
 }
 \description{
-The companion to \code{\link[=plot_projection]{plot_projection()}}: the same cells, panelled by what is
-uncertain about them rather than by what is predicted. Whichever of the
-uncertainty surfaces the run produced are drawn, and nothing else.
+Two or three panels above the map, one per question the projection can be
+doubted on. Only the ones a run actually produced are drawn.
 }
 \details{
-The two panels are deliberately not merged into a single "confidence" layer.
+The panels are deliberately not merged into a single "confidence" layer.
 They measure different things and are free to disagree in either direction,
 and the disagreement is the informative part: a cell can be stable across
 every member and still be extrapolated, because agreement between members
-trained on the same data is not evidence about ground the data never covered.
-Blending the two would average that case away instead of showing it.
-
-Diverging colour on the novelty panel, centred at zero, because zero is the
-meaningful break: above it the model is interpolating, below it the cell is
-outside the training range on some predictor and the model has no evidence
-for what it says there.
+trained on the same data is not evidence about ground the data never
+covered. Blending them would average that case away instead of showing it.
 }
+\section{Drawn by fancyfx}{
+
+The panels themselves come from \code{\link[fancyfx:plotUncertainty]{fancyfx::plotUncertainty()}} and
+\code{\link[fancyfx:plotExtrapolation]{fancyfx::plotExtrapolation()}} rather than being built here. That is worth a
+sentence because it used to be ninety lines of \code{ggplot2} in this file, and
+the replacement is better in two ways this package would otherwise have had
+to write for itself: cells are downsampled above \code{max.cells}, which a real
+Copernicus grid needs and the hand-built version did not do, and the
+extrapolation ramp diverges about zero in colours that survive the common
+colour vision deficiencies.
+}
+
 \seealso{
 \code{\link[=novelty_surface]{novelty_surface()}} for how the novelty panel is computed
 }

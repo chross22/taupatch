@@ -38,7 +38,7 @@
 copernicus_covariates <- function() {
   lapply(datamatch::copernicus_variables(), function(entry) {
     # Surface fields throughout; the pipeline models surface habitat, and
-    # accessEnvDat() can only return one depth level per request anyway.
+    # accessCopernicus() can only return one depth level per request anyway.
     entry$depth <- c(0, 1)
     entry
   })

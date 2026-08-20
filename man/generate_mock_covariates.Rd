@@ -27,7 +27,7 @@ generate_mock_covariates(
 an \code{sf} POINT object matching \code{fetch_covariates()}'s contract
 }
 \description{
-Produces the same shape \code{datamatch::accessEnvDat()} returns, so the pipeline
+Produces the same shape \code{datamatch::accessCopernicus()} returns, so the pipeline
 runs identically against mock and Copernicus data. Covariates carry the same
 latitudinal and seasonal structure planted in the mock abundances, so the model
 has something real to learn.

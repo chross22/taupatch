@@ -4,7 +4,7 @@
 \alias{evaluation_table}
 \title{Assemble a self-explanatory evaluation table}
 \usage{
-evaluation_table(predictions, cv_metrics, cutoff, bounds = NULL)
+evaluation_table(predictions, cv_metrics, cutoff, bounds = NULL, ssb = NULL)
 }
 \arguments{
 \item{predictions}{held-out predictions from resampling}

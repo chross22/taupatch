@@ -231,6 +231,14 @@ ensemble_spread <- function(ensemble, newdata, level = 0.9) {
 #' because its chlorophyll is higher than anything a station saw" is a decision
 #' about whether to widen the training window or clip the map.
 #'
+#' @section Where the numbers come from:
+#' [fancyfx::mess()] computes both columns. taupatch used to implement MESS
+#' itself, and the two implementations agreed to the last decimal on every case
+#' tested -- which is the argument for there being one of them rather than two.
+#' What survives here is the interface: the `novelty` and `novel_variable`
+#' names, which the projection CSV and the GeoTIFF layers are written under and
+#' which a run\'s output should not lose to an internal tidy-up.
+#'
 #' @param grid the cells to score, with one column per predictor
 #' @param model_data the data the model was fitted on
 #' @param predictors predictor column names
@@ -256,67 +264,16 @@ novelty_surface <- function(grid, model_data, predictors) {
                       stringsAsFactors = FALSE))
   }
 
-  similarity <- vapply(predictors, function(v) {
-    variable_similarity(grid[[v]], model_data[[v]])
-  }, numeric(nrow(grid)))
-  # vapply drops to a vector when the grid has one row, which then indexes
-  # wrongly below.
-  similarity <- matrix(similarity, nrow = nrow(grid),
-                       dimnames = list(NULL, predictors))
+  # The arithmetic is fancyfx's. This function is the name taupatch's output
+  # columns are written under, and the place the scale is explained; keeping it
+  # as a thin call means the projection CSV and the GeoTIFF layer keep the
+  # names they have always had.
+  out <- fancyfx::mess(as.data.frame(grid[predictors]),
+                       as.data.frame(model_data[predictors]),
+                       vars = predictors, limiting = TRUE)
 
-  worst <- apply(similarity, 1, function(row) {
-    if (all(is.na(row))) return(NA_integer_)
-    which.min(row)
-  })
-
-  data.frame(
-    novelty = apply(similarity, 1, min, na.rm = FALSE),
-    novel_variable = ifelse(is.na(worst), NA_character_, predictors[worst]),
-    stringsAsFactors = FALSE
-  )
-}
-
-#' Similarity of values to a training distribution, for one predictor
-#'
-#' The per-variable half of [novelty_surface()]. Negative below the training
-#' minimum and above its maximum, scaled by the training range; inside, twice
-#' the distance to the nearer tail in percentile terms, so the median scores 100.
-#'
-#' @param values the values to score
-#' @param train the training values for the same predictor
-#' @return a numeric vector the length of `values`
-#' @keywords internal
-variable_similarity <- function(values, train) {
-  train <- sort(train[is.finite(train)])
-  n <- length(train)
-  if (n == 0) return(rep(NA_real_, length(values)))
-
-  low <- train[1]
-  high <- train[n]
-  span <- high - low
-
-  # A predictor that never varied in training carries no information about
-  # what is ordinary, so it can only say same-or-not.
-  if (span == 0) {
-    return(ifelse(is.na(values), NA_real_, ifelse(values == low, 100, -Inf)))
-  }
-
-  # Percentile of each value within the training distribution. findInterval
-  # with left.open counts the training values strictly below, which is the
-  # count this needs and is a binary search rather than a full comparison
-  # against every training row - the difference between a grid that scores in
-  # a moment and one that does not.
-  below <- findInterval(values, train, left.open = TRUE)
-  percentile <- 100 * below / n
-
-  out <- ifelse(
-    percentile == 0, 100 * (values - low) / span,
-    ifelse(percentile <= 50, 2 * percentile,
-           ifelse(percentile < 100, 2 * (100 - percentile),
-                  100 * (high - values) / span))
-  )
-  out[is.na(values)] <- NA_real_
-  out
+  data.frame(novelty = out$mess, novel_variable = out$mess_variable,
+             stringsAsFactors = FALSE)
 }
 
 #' Summarise a novelty surface for the run log
