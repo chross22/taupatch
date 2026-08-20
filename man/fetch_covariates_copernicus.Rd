@@ -17,7 +17,7 @@ fetch_covariates_copernicus(config, years, months)
 an \code{sf} POINT object; see \code{fetch_covariates()}
 }
 \description{
-One \code{datamatch::accessEnvDat()} call per dataset entry in
+One \code{datamatch::accessCopernicus()} call per dataset entry in
 \code{covariates.copernicus}, joined on grid point and date. This replaces the ~200
 lines of hardcoded per-variable raster paths in \code{original/load_covars.R}.
 }
