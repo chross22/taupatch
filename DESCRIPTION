@@ -58,6 +58,6 @@ Remotes:
     chross22/fancyfx
 Config/testthat/edition: 3
 VignetteBuilder: knitr
-URL: https://github.com/chross22/taupatch
+URL: https://github.com/chross22/taupatch, https://camilleross.org/taupatch/
 BugReports: https://github.com/chross22/taupatch/issues
 Config/roxygen2/version: 8.1.0

@@ -17,3 +17,5 @@ inst/doc/
 vignettes/*.html
 vignettes/*.R
 
+# generated pkgdown site
+pkgdown-site/

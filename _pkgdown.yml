@@ -1,0 +1,142 @@
+# Served from camilleross.org/taupatch/, not chross22.github.io: GitHub applies
+# the user site's custom domain to every project page on the account. This must
+# name where visitors actually land, or the canonical link, sitemap and og:url
+# all point at a hostname nobody uses and search engines see two of each page.
+url: https://camilleross.org/taupatch/
+
+# NOT docs/. Several of these packages keep hand-written design notes and
+# methods write-ups in docs/, tracked in git, and a pkgdown build would erase
+# them. pkgdown refuses outright when it finds a docs/ it did not create; this
+# names a directory that is unambiguously generated.
+destination: pkgdown-site
+
+template:
+  bootstrap: 5
+  light-switch: true
+
+reference:
+- title: Running a study
+  desc: >
+    A study is a config file plus data. Point-and-click through the Shiny
+    app or drive the same pipeline from YAML; both take the same route.
+  contents:
+  - compare_runs
+  - generate_config
+  - load_config
+  - pipeline_stages
+  - run_taupatch
+  - run_taupatch_app
+  - save_config
+  - single_stages
+
+- title: Zooplankton data
+  desc: >
+    Reading plankton counts and getting them into one shape. A patch is
+    defined by a species-and-stage abundance threshold, so which stages a
+    column holds matters as much as the number in it.
+  contents:
+  - abundance_units
+  - available_species
+  - available_stages
+  - default_species_catalog
+  - format_zoop_data
+  - is_raw_export
+  - label_patch
+  - load_zoop_data
+  - measurement_columns
+  - raw_abundance_suffix
+  - species_catalog_from
+  - split_dates
+  - stage_suffix_pattern
+  - station_summary
+  - taxon_shorthand
+  - validate_columns
+  - zoop_taxa
+
+- title: Covariates
+  desc: >
+    Fetching environmental fields and joining them to stations, including
+    the derived layers that come from derivoce.
+  contents:
+  - add_derivoce_covariates
+  - apply_prejoin_steps
+  - attach_covariates
+  - bathymetry_covariates
+  - climate_index_covariates
+  - copernicus_client
+  - copernicus_covariates
+  - covariate_grid
+  - covariate_info
+  - covariate_monthly_means
+  - covariate_transforms
+  - default_copernicus_datasets
+  - derivoce_choices
+  - derivoce_covariates
+  - derivoce_required_inputs
+  - derivoce_steps_for
+  - fetch_covariates
+  - generate_mock_covariates
+  - plot_covariate_annual
+  - plot_covariate_heatmap
+  - plot_covariate_map
+  - plot_covariate_seasonal
+  - prejoin_steps
+
+- title: Fitting and projecting
+  desc: >
+    The models themselves, single or ensembled, and the projection of a
+    fitted model onto a new grid.
+  contents:
+  - ensemble_rules
+  - ensemble_settings
+  - fit_patch_ensemble
+  - fit_patch_model
+  - gam_bases
+  - gam_methods
+  - gam_smooth_terms
+  - glm_coefficients
+  - model_engine_fit
+  - model_types
+  - partial_effects
+  - power_curve
+  - print.taupatch_ensemble
+  - project_patch_model
+
+- title: Uncertainty and validation
+  desc: >
+    What the model does not know. Novelty and overlap surfaces say where a
+    projection is extrapolating rather than interpolating.
+  contents:
+  - bootstrap_evaluation
+  - jackknife_covariates
+  - jackknife_dropped
+  - jackknife_settings
+  - novelty_surface
+  - thin_covariates
+  - uncertainty_settings
+
+- title: Plots and output
+  desc: >
+    Figures for inspecting each stage, and the raster stack written at the
+    end.
+  contents:
+  - plot_calibration
+  - plot_gam_smooths
+  - plot_glm_coefficients
+  - plot_importance
+  - plot_partial_effects
+  - plot_pr_curve
+  - plot_projection
+  - plot_projection_uncertainty
+  - plot_roc_curve
+  - plot_station_map
+  - plot_station_series
+  - plot_threshold_performance
+  - projection_map
+  - write_suitability_stack
+
+- title: Test fixtures
+  desc: >
+    Mock data, so an example or a test can run without a data extract.
+  contents:
+  - generate_mock_zoop_data
