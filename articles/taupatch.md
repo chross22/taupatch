@@ -56,10 +56,6 @@ Now run it.
 ``` r
 
 result <- run_taupatch(config)
-#> Warning: `speciesDat` is now `dat`. The old name still works but will be
-#> removed.
-#> Warning: `envDat` is now `source`. The old name still works but will be
-#> removed.
 ```
 
 That is the whole pipeline. On real data the same call takes as long as
@@ -298,10 +294,6 @@ config$projection$uncertainty <- TRUE
 config$paths$output_dir <- file.path(tempdir(), "taupatch_vignette_unc")
 
 result <- run_taupatch(config)
-#> Warning: `speciesDat` is now `dat`. The old name still works but will be
-#> removed.
-#> Warning: `envDat` is now `source`. The old name still works but will be
-#> removed.
 
 suitability <- readr::read_csv(
   file.path(config$paths$output_dir, "projections", "suitability.csv"),
