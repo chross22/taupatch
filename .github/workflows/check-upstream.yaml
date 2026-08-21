@@ -1,0 +1,91 @@
+name: check-upstream
+
+# Reinstalls every dependency at its current version — including the GitHub
+# Remotes (datamatch, derivoce, fancyfx), which always resolve to the tip of
+# their default branch — and runs the test suite against them. Push-triggered
+# checks only catch upstream drift when this repo happens to change; this one
+# runs on a clock, so a renamed argument or deprecated function upstream
+# surfaces within a week instead of whenever taupatch is next touched.
+#
+# Any test warning fails the run: upstream deprecations arrive as warnings
+# (e.g. datamatch renaming matchData()'s speciesDat/envDat arguments), and the
+# suite is otherwise warning-clean, so a single warning is signal.
+#
+# Local rather than shared from chross22/distsamp, like pkgdown: no reusable
+# upstream-check workflow exists there yet.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      # sf and terra need these to build from source on Linux.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgdal-dev libgeos-dev libproj-dev libudunits2-dev
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      # upgrade: 'TRUE' so cached CRAN packages are bumped to current releases
+      # too, not just the GitHub remotes.
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::pkgload, any::desc, local::.
+          needs: check
+          upgrade: 'TRUE'
+
+      - name: Report dependency versions
+        run: |
+          deps <- setdiff(desc::desc_get_deps()$package, "R")
+          installed <- deps[vapply(deps, requireNamespace, logical(1), quietly = TRUE)]
+          for (pkg in installed) {
+            d <- utils::packageDescription(pkg)
+            sha <- d$RemoteSha %||% ""
+            cat(sprintf("%s %s %s\n", pkg, d$Version, substr(sha, 1, 9)))
+          }
+        shell: Rscript {0}
+
+      - name: Run tests, failing on any warning
+        run: |
+          res <- as.data.frame(testthat::test_local(stop_on_failure = TRUE))
+          warnings <- sum(res$warning)
+          if (warnings > 0) {
+            stop(warnings, " test warning(s) against current dependency versions")
+          }
+        shell: Rscript {0}
+
+      # One open issue at a time: comment on it if it exists, open it if not.
+      - name: Open or update an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create upstream-check --description "Filed by the check-upstream workflow" --force
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          existing=$(gh issue list --label upstream-check --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still failing: $run_url"
+          else
+            gh issue create \
+              --title "Tests fail or warn against current dependency versions" \
+              --label upstream-check \
+              --body "The weekly upstream check reinstalled all dependencies at their current versions and the test suite failed or warned. Most likely a change in datamatch, derivoce, or fancyfx. Run: $run_url"
+          fi
