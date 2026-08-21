@@ -1,0 +1,9 @@
+pandoc: 3.8.3
+pkgdown: 2.2.1
+pkgdown_sha: ~
+articles:
+  taupatch: taupatch.html
+last_built: 2026-08-21T16:40Z
+urls:
+  reference: https://camilleross.org/taupatch/reference
+  article: https://camilleross.org/taupatch/articles
