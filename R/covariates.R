@@ -268,7 +268,7 @@ attach_covariates <- function(dat, env_dat, config) {
   stations <- sf::st_as_sf(dat, coords = c("lon", "lat"), crs = sf::st_crs(4326),
                            remove = FALSE)
 
-  matched <- datamatch::matchData(speciesDat = stations, envDat = env_dat)
+  matched <- datamatch::matchData(dat = stations, source = env_dat)
 
   out <- sf::st_drop_geometry(matched) |> tibble::as_tibble()
   names(out)[names(out) == "YEAR"] <- "year"
