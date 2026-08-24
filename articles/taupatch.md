@@ -91,10 +91,6 @@ the evaluation has to be read.
 ``` r
 
 plot_station_map(result$data)
-#> The rnaturalearthdata package needs to be installed.
-#> Installing the rnaturalearthdata package.
-#> Installing package into '/home/runner/work/_temp/Library'
-#> (as 'lib' is unspecified)
 ```
 
 ![](taupatch_files/figure-html/station-map-1.png)

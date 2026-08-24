@@ -631,7 +631,8 @@ d’Ovidio et al. (2004), and `distance_to_shore` measures against
 [Natural Earth](https://www.naturalearthdata.com/) coastlines.
 derivoce’s own [reference
 list](https://github.com/chross22/derivoce#references) is the complete
-one, and [`?derivoce::ftle`](https://rdrr.io/pkg/derivoce/man/ftle.html)
+one, and
+[`?derivoce::ftle`](https://camilleross.org/derivoce/reference/ftle.html)
 and friends carry the reference for each function.
 
 These are computed **on the covariate grid, before stations are matched
