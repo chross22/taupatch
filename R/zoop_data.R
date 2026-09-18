@@ -30,7 +30,7 @@ load_zoop_data <- function(config) {
     day = raw[[cols$day]],
     abundance = abundance
   )
-  if (!is.null(cols$dataset_filter)) {
+  if (length(cols$dataset_filter) > 0) {
     dat$dataset <- raw[[cols$dataset]]
   }
 
@@ -47,7 +47,7 @@ load_zoop_data <- function(config) {
       .data$lat >= config$study_area$bbox$ymin, .data$lat <= config$study_area$bbox$ymax
     )
 
-  if (!is.null(cols$dataset_filter)) {
+  if (length(cols$dataset_filter) > 0) {
     dat <- dat |> dplyr::filter(.data$dataset %in% cols$dataset_filter)
   }
 

@@ -137,6 +137,18 @@ project_patch_model <- function(model, env_dat, config, bathy = NULL) {
         next
       }
 
+      # Depth correction: water deeper than projection.depth_limit (metres) is
+      # scored as unsuitable rather than left to the model. The survey never
+      # samples the abyss, and a forest that learned "deep basin = patch" from
+      # overwintering aggregations extends that rule past the deepest station
+      # it ever saw. Zero, not NA: the claim is "bad habitat", not "no data".
+      limit <- config$projection$depth_limit
+      if (!is.null(limit) && "DEPTH" %in% names(grid)) {
+        depth_at <- grid$DEPTH[match(paste(predicted$lon, predicted$lat),
+                                     paste(grid$lon, grid$lat))]
+        predicted$suitability[!is.na(depth_at) & abs(depth_at) > limit] <- 0
+      }
+
       stem <- sprintf("%s_%d_%02d", species, year, month)
       geotiff_path <- NA_character_
       png_path <- NA_character_

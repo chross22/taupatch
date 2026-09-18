@@ -433,12 +433,16 @@ validate_covariates <- function(config) {
 
   excluded <- config$covariates$exclude
   if (length(excluded) > 0) {
-    unknown <- setdiff(excluded, c(selected, bathymetry))
+    # Derivoce outputs count too: an intermediate like `speed`, computed only
+    # so a later step can take its gradient, is fetched-then-derived rather
+    # than selected, and excluding it is the same "ingredient, not predictor"
+    # case as the velocity components behind it.
+    unknown <- setdiff(excluded, c(selected, bathymetry, derivoce_names(config)))
     if (length(unknown) > 0) {
       stop("covariates.exclude names covariates that are not fetched: ",
            paste(unknown, collapse = ", "),
-           "\nIt drops a fetched covariate from the predictors; it cannot drop ",
-           "one that was never selected.", call. = FALSE)
+           "\nIt drops a fetched or derived covariate from the predictors; it ",
+           "cannot drop one the run never produces.", call. = FALSE)
     }
   }
 
@@ -498,7 +502,9 @@ validate_columns <- function(config) {
                                    show_col_types = FALSE, progress = FALSE))
 
   required <- unlist(config$columns[c("lat", "lon", "year", "month", "day")])
-  if (!is.null(config$columns$dataset_filter)) {
+  # An explicitly empty dataset_filter means "this database has no dataset
+  # column" - a formatted raw export - so nothing more is required.
+  if (length(config$columns$dataset_filter) > 0) {
     required <- c(required, config$columns$dataset)
   }
 
