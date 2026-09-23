@@ -20,7 +20,7 @@ per covariate variable, and \code{YEAR}/\code{MONTH}/\code{DAY} columns
 }
 \description{
 Dispatches on \code{covariates.source} in the config. The \code{"copernicus"} source
-fetches from Copernicus Marine via \code{datamatch::accessEnvDat()}; \code{"local_netcdf"}
+fetches from Copernicus Marine via \code{datamatch::accessCopernicus()}; \code{"local_netcdf"}
 reads a directory of NetCDF files already on disk; \code{"mock"} generates synthetic
 covariates so the pipeline can run without network access.
 }

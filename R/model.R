@@ -35,6 +35,10 @@ fit_patch_model <- function(dat, config) {
   }
 
   model_data <- dat[c(predictors, "patch")] |> as.data.frame()
+  # Kept beside the modelling data rather than in it: the coordinates are not
+  # predictors and must not become any, but spatial_bias() needs to know where
+  # each station was, and `.row` in the held-out predictions indexes this.
+  coordinates <- station_coordinates(dat)
 
   rec <- build_recipe(model_data, config)
   spec <- build_model_spec(config)
@@ -92,6 +96,12 @@ fit_patch_model <- function(dat, config) {
                                  times = bootstrap_times(config),
                                  seed = config$model$seed)
 
+  # Computed before the evaluation table so it can go in it. It is a property
+  # of the folds rather than of the fit, so every model type on these folds
+  # gets the same number - which is what makes it a caveat on a comparison
+  # rather than a score in one.
+  bias <- spatial_bias(list(coordinates = coordinates, predictions = predictions))
+
   # The point estimate stays the model fitted on everything. The ensemble only
   # ever adds columns beside it, so turning uncertainty on never moves a map.
   ensemble <- if (is.null(uncertainty)) {
@@ -103,7 +113,9 @@ fit_patch_model <- function(dat, config) {
   list(
     workflow = fitted,
     metrics = cv_metrics,
-    evaluation = evaluation_table(predictions, cv_metrics, cutoff, bounds),
+    evaluation = evaluation_table(predictions, cv_metrics, cutoff, bounds,
+                                  ssb = overall_ssb(bias)),
+    spatial_bias = bias,
     predictions = predictions,
     classification_threshold = cutoff,
     # The cutoff is estimated, and how much it moves decides whether a binarised
@@ -117,9 +129,23 @@ fit_patch_model <- function(dat, config) {
     # can be produced without refitting. It is the station table, so hundreds to
     # a few thousand rows.
     model_data = model_data,
+    coordinates = coordinates,
     predictors = predictors,
     threshold = attr(dat, "threshold")
   )
+}
+
+#' Station coordinates, in the order the modelling data is in
+#'
+#' `NULL` when the station table has no coordinates, which is the case for a
+#' hand-built frame in a test rather than for anything a run produces.
+#'
+#' @param dat labeled modeling data
+#' @return a two-column data frame of `lon` and `lat`, or `NULL`
+#' @keywords internal
+station_coordinates <- function(dat) {
+  if (!all(c("lon", "lat") %in% names(dat))) return(NULL)
+  as.data.frame(dat[c("lon", "lat")])
 }
 
 #' Assemble a self-explanatory evaluation table
@@ -171,7 +197,8 @@ fit_patch_model <- function(dat, config) {
 #' \doi{10.1111/2041-210X.13140} — the same argument for rare events in species
 #' distribution models, which is what a patch is
 #' @keywords internal
-evaluation_table <- function(predictions, cv_metrics, cutoff, bounds = NULL) {
+evaluation_table <- function(predictions, cv_metrics, cutoff, bounds = NULL,
+                             ssb = NULL) {
   threshold_free <- c("roc_auc", "pr_auc")
 
   ranking <- data.frame(
@@ -195,7 +222,17 @@ evaluation_table <- function(predictions, cv_metrics, cutoff, bounds = NULL) {
   at_best$std_err <- NA_real_
   at_best$note <- "TSS-optimal cutoff; use this one to binarise a projection"
 
-  out <- rbind(ranking, at_default, at_best)
+  # Reported beside the ranking metrics rather than in a file of its own,
+  # because it is the number that says how much to believe them. A reader who
+  # sees roc_auc 0.86 and has to go looking for the caveat will not.
+  bias <- if (is.null(ssb) || is.na(ssb)) NULL else data.frame(
+    metric = "ssb", threshold = NA_real_, value = ssb, std_err = NA_real_,
+    note = paste("spatial sorting bias of the folds, not a model score;",
+                 "1 is fair, near 0 means the metrics above are optimistic"),
+    stringsAsFactors = FALSE
+  )
+
+  out <- rbind(ranking, at_default, at_best, bias)
 
   # Every row gets an interval, including the ones that never had a standard
   # error - which is the point. Column order puts the two uncertainty measures

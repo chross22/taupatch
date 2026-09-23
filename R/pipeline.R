@@ -117,6 +117,10 @@ run_taupatch <- function(config_path, project = TRUE, keep_covariates = 50000) {
   # Read off the evaluation table rather than the metrics one, since that is
   # the table both a single model and an ensemble fill in the same way.
   message("  ROC AUC: ", signif(evaluation_value(model, "roc_auc"), 4))
+  # Said out loud rather than left in a column, because it is the caveat on the
+  # line above it and a reader who has to go looking for it will not.
+  ssb <- overall_ssb(model$spatial_bias)
+  if (!is.na(ssb)) message("  ", spatial_bias_note(ssb))
 
   projections <- NULL
   if (project) {
@@ -160,6 +164,9 @@ write_model_outputs <- function(model, config) {
   readr::write_csv(model$evaluation, file.path(out, "evals.csv"))
   readr::write_csv(model$metrics, file.path(out, "cv_metrics.csv"))
   readr::write_csv(model$importance, file.path(out, "var_importance.csv"))
+  if (!is.null(model$spatial_bias)) {
+    readr::write_csv(model$spatial_bias, file.path(out, "spatial_bias.csv"))
+  }
   plot_importance(model$importance, file.path(out, "var_importance.png"))
   write_diagnostic_plots(model, out)
 

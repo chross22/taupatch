@@ -73,7 +73,7 @@ It still describes the science we want, but the implementation has aged out from
   (Kuhn & Wickham 2020). Beyond removing the `setwd()`
   and string-pasting workarounds, `tidymodels` is engine-agnostic — swapping RF for boosted
   trees or a GLM becomes a config field, which is what the GUI wants to expose.
-- **Copernicus replaces HYCOM/GlobColour/CCMP.** `datamatch::accessEnvDat()` fetches by
+- **Copernicus replaces HYCOM/GlobColour/CCMP.** `datamatch::accessCopernicus()` fetches by
   product/dataset/variable IDs declared in config; `datamatch::matchData()` joins to
   station points with `sf::st_nearest_feature`, which removes the rounded-coordinate join
   and the station loss that came with it.
@@ -218,7 +218,7 @@ docs/rebuild_plan.md
 
 | Original | Replacement |
 |---|---|
-| `load_covars.R` (~200 lines of hardcoded raster paths) | `datamatch::accessEnvDat()`, driven by `covariates.copernicus` in config |
+| `load_covars.R` (~200 lines of hardcoded raster paths) | `datamatch::accessCopernicus()`, driven by `covariates.copernicus` in config |
 | `int_chl.R`, `get_climatology.R` (185 lines, 4× repeated if-blocks) | dropped — Copernicus serves monthly products directly |
 | `format_model_data.R` (nested loops, lossy rounded join) | `datamatch::matchData()` (`st_nearest_feature`, no rounding) |
 | `bind_years.R` (rbind loop over per-year CSVs) | one source table + a `dplyr::filter()` |
@@ -284,9 +284,10 @@ each bound is an unnamed length-1 number, which is what would have caught this.
 Two were in `chross22/datamatch`, and blocked the pipeline rather than being
 incidental:
 
-1. **Nothing was exported.** Both `accessEnvDat()` and `matchData()` had roxygen
-   documentation but no `@export` tag, so `NAMESPACE` was empty and neither was
-   callable from outside the package. Fixed by adding the tags.
+1. **Nothing was exported.** Both `accessCopernicus()` (named `accessEnvDat()`
+   at the time) and `matchData()` had roxygen documentation but no `@export`
+   tag, so `NAMESPACE` was empty and neither was callable from outside the
+   package. Fixed by adding the tags.
 2. **`matchData()` matched on YEAR/MONTH/DAY exactly**, which matches nothing
    against monthly products — a monthly mean carries one time step per month while
    observations fall on arbitrary days. Generalized to match at the environmental

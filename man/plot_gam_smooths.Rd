@@ -24,8 +24,7 @@ rather than reconstructed by prediction, so it carries uncertainty, which a
 partial dependence curve cannot.
 }
 \details{
-Drawn by \href{https://github.com/chross22/fancyfx}{fancyfx}, which is a Suggests
-— a run without it still gets the generic partial effect curves.
+Drawn by \href{https://github.com/chross22/fancyfx}{fancyfx}.
 }
 \section{Why the axes read in standard deviations}{
 

@@ -40,6 +40,16 @@ half: "this coast is extrapolated" is a shrug, and "this coast is extrapolated
 because its chlorophyll is higher than anything a station saw" is a decision
 about whether to widen the training window or clip the map.
 }
+\section{Where the numbers come from}{
+
+\code{\link[fancyfx:mess]{fancyfx::mess()}} computes both columns. taupatch used to implement MESS
+itself, and the two implementations agreed to the last decimal on every case
+tested -- which is the argument for there being one of them rather than two.
+What survives here is the interface: the \code{novelty} and \code{novel_variable}
+names, which the projection CSV and the GeoTIFF layers are written under and
+which a run\'s output should not lose to an internal tidy-up.
+}
+
 \examples{
 train <- data.frame(SST = c(4, 8, 12, 16), CHL = c(0.2, 0.5, 1.0, 2.0))
 grid <- data.frame(SST = c(10, 25), CHL = c(0.6, 0.6))

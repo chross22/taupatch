@@ -211,3 +211,77 @@ test_that("a power curve is reproducible", {
   expect_equal(once$difference, twice$difference)
   expect_equal(once$std_err, twice$std_err)
 })
+
+# ---- projection overlap ------------------------------------------------------
+
+overlap_cells <- function(seed = 1) {
+  cells <- expand.grid(lon = seq(-70, -66, by = 0.5),
+                       lat = seq(41, 44, by = 0.5))
+  set.seed(seed)
+  cells$suitability <- stats::runif(nrow(cells))
+  cells
+}
+
+test_that("a surface overlaps itself completely", {
+  cells <- overlap_cells()
+
+  out <- projection_overlap(cells, cells)
+
+  expect_equal(unname(out[["D"]]), 1)
+  expect_equal(unname(out[["I"]]), 1)
+  expect_equal(attr(out, "n_cells"), nrow(cells))
+})
+
+test_that("a surface overlaps its own inverse less than itself", {
+  cells <- overlap_cells()
+  flipped <- cells
+  flipped$suitability <- 1 - cells$suitability
+
+  expect_lt(projection_overlap(cells, flipped)[["D"]],
+            projection_overlap(cells, cells)[["D"]])
+})
+
+test_that("one statistic can be asked for on its own", {
+  cells <- overlap_cells()
+
+  expect_named(projection_overlap(cells, cells, statistic = "D"), "D")
+  expect_named(projection_overlap(cells, cells, statistic = "I"), "I")
+  expect_setequal(names(projection_overlap(cells, cells)), c("D", "I"))
+})
+
+test_that("cells are matched on coordinates rather than on row order", {
+  # Two projections written by different runs need not be in the same order,
+  # and comparing row i of one with row i of the other would be comparing two
+  # different places.
+  cells <- overlap_cells()
+  shuffled <- cells[order(stats::runif(nrow(cells))), ]
+
+  expect_equal(unname(projection_overlap(cells, shuffled)[["D"]]), 1)
+})
+
+test_that("projections covering different ground are intersected, loudly", {
+  cells <- overlap_cells()
+  partial <- cells[cells$lat <= 43, ]
+
+  expect_warning(out <- projection_overlap(cells, partial),
+                 "do not cover the same cells")
+  expect_equal(attr(out, "n_cells"), nrow(partial))
+})
+
+test_that("projections with no common ground are refused", {
+  cells <- overlap_cells()
+  elsewhere <- cells
+  elsewhere$lon <- elsewhere$lon + 100
+
+  expect_error(suppressWarnings(projection_overlap(cells, elsewhere)),
+               "share 0 cells")
+})
+
+test_that("a table that is not a projection says what it is missing", {
+  cells <- overlap_cells()
+
+  expect_error(projection_overlap(cells[, c("lon", "lat")], cells),
+               "missing: suitability")
+  expect_error(projection_overlap(cells, cells[, c("lon", "suitability")]),
+               "missing: lat")
+})

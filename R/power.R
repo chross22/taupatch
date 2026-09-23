@@ -485,3 +485,117 @@ power_point <- function(model_data, configs, predictors, types, fraction,
     stringsAsFactors = FALSE
   )
 }
+
+#' How much two projected surfaces agree about the habitat
+#'
+#' [compare_runs()] asks which run scores better. This asks something the
+#' scores cannot: whether the two maps are the *same map*. Two runs can rank
+#' stations equally well and disagree completely about where the habitat is,
+#' and a comparison of AUCs would report them as equivalent.
+#'
+#' Schoener's *D* and Warren's *I*, both on 0 to 1. **1** is identical
+#' surfaces; **0** is no overlap at all. There is no threshold at which two
+#' niches become "the same" — the number is a description, and what counts as
+#' close depends on what the maps are for.
+#'
+#' @section Read them as high numbers:
+#' Both statistics compare the suitability *distributions* cell by cell after
+#' normalising them, so they run high. Two surfaces of independent random noise
+#' over the same grid score around 0.7 on *D* and 0.9 on *I* — not because they
+#' agree about anything, but because both spread their probability over the
+#' same cells in similar proportions. Treat those as the floor for surfaces of
+#' this shape rather than reading 0.9 as near-identity, and compare overlaps
+#' against each other rather than against 1.
+#'
+#' @section What it is good for:
+#' Two questions, mostly. *Do two species occupy the same habitat?* — run
+#' `cfin` and `ctyp` over the same months and compare their surfaces. And *does
+#' the choice of algorithm change the map?* — the more useful one when a
+#' comparison of scores came back inconclusive, because a small difference in
+#' AUC with a low overlap means the two models are doing genuinely different
+#' things and the tie in performance is hiding it.
+#'
+#' @section Matching the cells:
+#' The two surfaces must be the same cells in the same order, or the overlap is
+#' measured between places that have nothing to do with each other. Cells are
+#' matched on their coordinates rather than on row position, and cells present
+#' in one projection and not the other are dropped with a warning — a
+#' projection that covers less ground usually has a reason, and averaging over
+#' the difference would hide it.
+#'
+#' @param x,y projections to compare: data frames with `lon`, `lat` and
+#'   `suitability`, as [project_patch_model()] writes to `suitability.csv`
+#' @param statistic `"both"`, `"D"`, or `"I"`
+#' @param digits how many decimal places the coordinates are matched on.
+#'   Projections from the same grid agree exactly; this is for two that came
+#'   off slightly different pipelines
+#' @return a named numeric vector, with an `n_cells` attribute
+#' @examples
+#' \dontrun{
+#' rf <- readr::read_csv("output/rf/projections/suitability.csv")
+#' gam <- readr::read_csv("output/gam/projections/suitability.csv")
+#'
+#' projection_overlap(rf[rf$month == 7, ], gam[gam$month == 7, ])
+#' }
+#' @references
+#' Schoener TW (1968). The *Anolis* lizards of Bimini: resource partitioning in
+#' a complex fauna. *Ecology* **49**(4), 704-726. \doi{10.2307/1935534} — *D*
+#'
+#' Warren DL, Glor RE, Turelli M (2008). Environmental niche equivalency versus
+#' conservatism: quantitative approaches to niche evolution. *Evolution*
+#' **62**(11), 2868-2883. \doi{10.1111/j.1558-5646.2008.00482.x} — *I*
+#' @seealso [compare_runs()], which asks which surface is *better* rather than
+#'   whether they are the same
+#' @export
+projection_overlap <- function(x, y, statistic = c("both", "D", "I"),
+                               digits = 6) {
+  statistic <- match.arg(statistic)
+  x <- projection_cells(x, "x")
+  y <- projection_cells(y, "y")
+
+  key <- function(cells) {
+    paste(round(cells$lon, digits), round(cells$lat, digits), sep = "\r")
+  }
+  shared <- intersect(key(x), key(y))
+  dropped <- length(union(key(x), key(y))) - length(shared)
+
+  if (length(shared) < 2) {
+    stop("The two projections share ", length(shared), " cells, so there is ",
+         "no common ground to measure overlap over.\nThey were probably ",
+         "projected onto different grids; `covariates.grid` decides that.",
+         call. = FALSE)
+  }
+  if (dropped > 0) {
+    warning("The two projections do not cover the same cells: ", dropped,
+            " of ", length(shared) + dropped, " are in one and not the other, ",
+            "and the overlap uses the ", length(shared), " they share.",
+            call. = FALSE)
+  }
+
+  out <- fancyfx::niche_overlap(
+    x$suitability[match(shared, key(x))],
+    y$suitability[match(shared, key(y))],
+    statistic = statistic
+  )
+  attr(out, "n_cells") <- length(shared)
+  out
+}
+
+#' The cells of a projection, checked
+#'
+#' @param projection a projection table
+#' @param label which argument it came from, for the error
+#' @return a data frame of `lon`, `lat` and `suitability`
+#' @keywords internal
+projection_cells <- function(projection, label) {
+  projection <- as.data.frame(projection)
+  needed <- c("lon", "lat", "suitability")
+  missing <- setdiff(needed, names(projection))
+  if (length(missing) > 0) {
+    stop("`", label, "` is missing: ", paste(missing, collapse = ", "),
+         ".\nprojection_overlap() reads the table project_patch_model() ",
+         "writes to suitability.csv; one month of it at a time, since two ",
+         "months stacked are two surfaces rather than one.", call. = FALSE)
+  }
+  projection[needed]
+}

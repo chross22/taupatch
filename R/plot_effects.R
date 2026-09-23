@@ -239,30 +239,6 @@ gam_smooth_terms <- function(fitted) {
   out[order(-out$edf), ]
 }
 
-#' Whether fancyfx is available to draw smooths
-#'
-#' Its own function so the optional path can be exercised in tests without
-#' mocking `requireNamespace()` itself, which every package that loads a
-#' graphics device also goes through.
-#'
-#' @section It used to be called fancygam:
-#' The package was renamed when it grew past GAMs. The rename is why this
-#' matters more than a find-and-replace: `chross22/fancygam` still resolves on
-#' GitHub, so `Remotes: chross22/fancygam` kept installing — but what it
-#' installs now declares `Package: fancyfx`, so `requireNamespace("fancygam")`
-#' returned `FALSE` on every fresh install and the smooth plots were skipped in
-#' silence. Anyone with the old package still sitting in their library saw
-#' nothing wrong.
-#'
-#' That is the failure mode to watch for here: this function gates a diagnostic
-#' rather than the run, so a wrong answer costs a plot and no error.
-#'
-#' @return `TRUE` when fancyfx is installed
-#' @keywords internal
-has_fancyfx <- function() {
-  requireNamespace("fancyfx", quietly = TRUE)
-}
-
 #' Variables a fitted GAM gave a smooth to
 #'
 #' Not every predictor gets one — [model_formula()] gives a linear term to any
@@ -287,8 +263,7 @@ gam_smoothed_variables <- function(fitted) {
 #' rather than reconstructed by prediction, so it carries uncertainty, which a
 #' partial dependence curve cannot.
 #'
-#' Drawn by [fancyfx](https://github.com/chross22/fancyfx), which is a Suggests
-#' — a run without it still gets the generic partial effect curves.
+#' Drawn by [fancyfx](https://github.com/chross22/fancyfx).
 #'
 #' @section Why the axes read in standard deviations:
 #' The smooths belong to the model, and the model was fitted on the recipe's
@@ -309,11 +284,6 @@ gam_smoothed_variables <- function(fitted) {
 #' @seealso [gam_smooth_terms()] for the numbers behind these
 #' @export
 plot_gam_smooths <- function(model, vars = NULL, path = NULL) {
-  if (!has_fancyfx()) {
-    stop("The 'fancyfx' package is required to plot GAM smooths. ",
-         "Install it with remotes::install_github('chross22/fancyfx').",
-         call. = FALSE)
-  }
   workflow <- if (inherits(model, "workflow")) model else model$workflow
 
   vars <- vars %||% gam_smoothed_variables(workflow)
@@ -382,16 +352,12 @@ write_effect_plots <- function(model, out) {
       written <- c(written, "smooth_terms.csv")
     }
 
-    # The fitted smooths themselves, with their uncertainty. Skipped without a
-    # word when fancyfx is absent: it is a Suggests, and the generic partial
-    # effect curves above already cover the question.
-    if (has_fancyfx()) {
-      smooths <- try_diagnostic(
-        plot_gam_smooths(model, path = file.path(out, "gam_smooths.png")),
-        "GAM smooth plots"
-      )
-      if (!is.null(smooths)) written <- c(written, "gam_smooths.png")
-    }
+    # The fitted smooths themselves, with their uncertainty.
+    smooths <- try_diagnostic(
+      plot_gam_smooths(model, path = file.path(out, "gam_smooths.png")),
+      "GAM smooth plots"
+    )
+    if (!is.null(smooths)) written <- c(written, "gam_smooths.png")
   }
 
   invisible(written)
